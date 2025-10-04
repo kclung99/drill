@@ -11,13 +11,18 @@ export default function DrawingPractice() {
   const [images, setImages] = useState<DrawingImage[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [duration, setDuration] = useState<number | 'inf'>(60);
-  const [imageCount, setImageCount] = useState(1);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [alwaysGenerateNew, setAlwaysGenerateNew] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
+
+  // New filter options
+  const [category, setCategory] = useState<string>('full-body');
+  const [gender, setGender] = useState<string>('female');
+  const [clothing, setClothing] = useState<string>('minimal');
+  const [imageCount, setImageCount] = useState(1);
 
   const imagePoolService = new ImagePoolService();
 
@@ -78,7 +83,7 @@ export default function DrawingPractice() {
       let sessionImages;
       if (alwaysGenerateNew) {
         // Force generation of new images, skip pool
-        sessionImages = await imagePoolService.generateImages(imageCount);
+        sessionImages = await imagePoolService.generateImages(imageCount, category, gender, clothing);
       } else {
         // Use normal pool logic
         sessionImages = await imagePoolService.getImagesForSession(imageCount);
@@ -143,9 +148,68 @@ export default function DrawingPractice() {
           <div className="max-w-2xl w-full space-y-8">
 
             <div className="flex flex-col items-center gap-2">
+              <div className="text-sm text-gray-500">parts</div>
+              <div className="flex justify-center gap-2 flex-wrap">
+                {['full-body', 'hands', 'feet', 'portraits'].map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setCategory(cat)}
+                    className={`px-4 py-2 text-sm border border-gray-400 ${
+                      category === cat
+                        ? 'bg-black text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-sm text-gray-500">gender</div>
+              <div className="flex justify-center gap-2">
+                {['male', 'female', 'both'].map(g => (
+                  <button
+                    key={g}
+                    onClick={() => setGender(g)}
+                    className={`px-4 py-2 text-sm border border-gray-400 ${
+                      gender === g
+                        ? 'bg-black text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {category === 'full-body' && (
+              <div className="flex flex-col items-center gap-2">
+                <div className="text-sm text-gray-500">clothing</div>
+                <div className="flex justify-center gap-2 flex-wrap">
+                  {['minimal', 'clothed'].map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setClothing(c)}
+                      className={`px-4 py-2 text-sm border border-gray-400 ${
+                        clothing === c
+                          ? 'bg-black text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col items-center gap-2">
               <div className="text-sm text-gray-500">count</div>
               <div className="flex justify-center gap-2">
-                {[3, 10, 20, 30].map(count => (
+                {[1, 3, 10, 20, 30].map(count => (
                   <button
                     key={count}
                     onClick={() => setImageCount(count)}

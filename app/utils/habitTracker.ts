@@ -57,9 +57,21 @@ export const updateHabitSettings = (settings: HabitSettings): void => {
   saveHabitData(data);
 };
 
+const getTodayInTimezone = (): string => {
+  const timezone = process.env.NEXT_PUBLIC_TIMEZONE || 'America/Chicago';
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  return formatter.format(now); // Returns YYYY-MM-DD
+};
+
 export const incrementSession = (type: 'music' | 'drawing'): void => {
   const data = getHabitData();
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayInTimezone();
 
   let dayData = data.days.find(d => d.date === today);
   if (!dayData) {

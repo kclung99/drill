@@ -24,6 +24,7 @@ export default function PracticeMode() {
     chordTypes: ['maj', 'min'],
     scales: ['C']
   });
+  const [sessionDuration, setSessionDuration] = useState<number>(3); // minutes
 
   // Session state
   const [sessionChords, setSessionChords] = useState<string[]>([]);
@@ -31,6 +32,9 @@ export default function PracticeMode() {
   const [sessionResults, setSessionResults] = useState<SessionResult[]>([]);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [sessionTimeRemaining, setSessionTimeRemaining] = useState<number>(0);
+  const [totalChordsAnswered, setTotalChordsAnswered] = useState(0);
 
   // Current chord state
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -64,8 +68,11 @@ export default function PracticeMode() {
     setSessionChords(chords);
     setCurrentChordIndex(0);
     setSessionResults([]);
+    setTotalChordsAnswered(0);
     setIsSessionActive(true);
     setIsSessionComplete(false);
+    setSessionStartTime(Date.now());
+    setSessionTimeRemaining(sessionDuration * 60 * 1000); // convert minutes to ms
     startCurrentChord();
   };
 
@@ -79,21 +86,45 @@ export default function PracticeMode() {
   };
 
   const nextChord = () => {
-    if (currentChordIndex < sessionChords.length - 1) {
-      setCurrentChordIndex(prev => prev + 1);
-      startCurrentChord();
-    } else {
-      // Session complete
-      setIsSessionActive(false);
-      setIsSessionComplete(true);
-      // Increment music session in habit tracker
-      incrementSession('music');
-    }
+    // In time-based mode, keep generating new chords until time runs out
+    setTotalChordsAnswered(prev => prev + 1);
+
+    // Generate a new chord and add to the list
+    const newChords = generateSessionChords({ ...sessionConfig, chordCount: 1 });
+    setSessionChords(prev => [...prev, ...newChords]);
+    setCurrentChordIndex(prev => prev + 1);
+    startCurrentChord();
+  };
+
+  const endSession = () => {
+    setIsSessionActive(false);
+    setIsSessionComplete(true);
+    // Increment music session in habit tracker
+    incrementSession('music');
   };
 
 
 
-  // Real-time stopwatch effect
+  // Session countdown timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (sessionStartTime && isSessionActive) {
+      interval = setInterval(() => {
+        const elapsed = Date.now() - sessionStartTime;
+        const remaining = (sessionDuration * 60 * 1000) - elapsed;
+
+        if (remaining <= 0) {
+          setSessionTimeRemaining(0);
+          endSession();
+        } else {
+          setSessionTimeRemaining(remaining);
+        }
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [sessionStartTime, isSessionActive, sessionDuration]);
+
+  // Real-time stopwatch effect for current chord
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (startTime && !isWaitingForNext && isSessionActive) {
@@ -145,7 +176,7 @@ export default function PracticeMode() {
     if (sessionResults.length === 0) return null;
 
     const totalAttempts = sessionResults.reduce((sum, r) => sum + r.attempts, 0);
-    const correctChords = sessionResults.filter(r => r.correctTime > 0).length;
+    const correctChords = totalChordsAnswered;
     const avgCorrectTime = correctChords > 0
       ? sessionResults.filter(r => r.correctTime > 0).reduce((sum, r) => sum + r.correctTime, 0) / correctChords
       : 0;
@@ -154,12 +185,12 @@ export default function PracticeMode() {
     return {
       totalAttempts,
       correctChords,
-      attemptAccuracy: totalAttempts > 0 ? (correctChords / totalAttempts) * 100 : 0,
-      avgCorrectTime: avgCorrectTime / 1000,
+      chordAccuracy: correctChords > 0 ? (correctChords / totalAttempts) * 100 : 0,
+      avgTimePerChord: avgCorrectTime / 1000,
       fastestTime: correctTimes.length > 0 ? Math.min(...correctTimes) / 1000 : 0,
       slowestTime: correctTimes.length > 0 ? Math.max(...correctTimes) / 1000 : 0
     };
-  }, [sessionResults]);
+  }, [sessionResults, totalChordsAnswered]);
 
   if (!isSupported) {
     return (
@@ -211,19 +242,19 @@ export default function PracticeMode() {
           <div className="max-w-2xl w-full space-y-8">
 
             <div className="flex flex-col items-center gap-2">
-              <div className="text-sm text-gray-500">count</div>
+              <div className="text-sm text-gray-500">duration</div>
               <div className="flex justify-center gap-2">
-                {[3, 20, 30, 40].map(count => (
+                {[3, 5, 10, 20].map(duration => (
                   <button
-                    key={count}
-                    onClick={() => setSessionConfig(prev => ({ ...prev, chordCount: count }))}
+                    key={duration}
+                    onClick={() => setSessionDuration(duration)}
                     className={`px-4 py-2 text-sm border border-gray-400 ${
-                      sessionConfig.chordCount === count
+                      sessionDuration === duration
                         ? 'bg-black text-white'
                         : 'bg-white text-gray-600 hover:bg-gray-100'
                     }`}
                   >
-                    {count}
+                    {duration}min
                   </button>
                 ))}
               </div>
@@ -357,12 +388,12 @@ export default function PracticeMode() {
 
         <div className="flex-1 p-8 flex flex-col items-center justify-center gap-8">
           <div className="text-4xl font-bold text-blue-600">
-            {sessionMetrics.attemptAccuracy.toFixed(0)}%
+            {sessionMetrics.chordAccuracy.toFixed(0)}%
           </div>
 
           <div className="flex gap-8 text-sm text-gray-600">
-            <div>{sessionMetrics.totalAttempts} attempts</div>
-            <div>{sessionMetrics.avgCorrectTime.toFixed(1)}s avg</div>
+            <div>{sessionMetrics.correctChords} chords</div>
+            <div>{sessionMetrics.avgTimePerChord.toFixed(1)}s avg</div>
             <div>{sessionMetrics.fastestTime.toFixed(1)}s best</div>
           </div>
 
@@ -426,9 +457,9 @@ export default function PracticeMode() {
       <div className="flex-1 p-8 flex flex-col items-center justify-center gap-8">
 
         <div className="flex items-center gap-4 text-sm text-gray-500">
-          <div>{currentChordIndex + 1}/{sessionChords.length}</div>
+          <div>{Math.floor(sessionTimeRemaining / 60000)}:{((sessionTimeRemaining % 60000) / 1000).toFixed(0).padStart(2, '0')}</div>
           <div>·</div>
-          <div>{(currentTime / 1000).toFixed(1)}s</div>
+          <div>{totalChordsAnswered} answered</div>
           <div>·</div>
           <div>{currentAttempts} attempts</div>
         </div>

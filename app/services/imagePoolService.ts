@@ -47,7 +47,12 @@ export class ImagePoolService {
     }
   }
 
-  async generateImages(count: number): Promise<DrawingImage[]> {
+  async generateImages(
+    count: number,
+    category: string = 'full-body',
+    gender: string = 'female',
+    clothing: string = 'minimal'
+  ): Promise<DrawingImage[]> {
     console.log(`🚀 Starting parallel generation of ${count} images...`);
 
     // Create array of generation promises
@@ -56,7 +61,7 @@ export class ImagePoolService {
         console.log(`📝 Generating image ${i + 1}/${count}...`);
 
         // Generate prompt with random attributes
-        const { prompt, bodyType, race, pose, angle } = generateDrawingPrompt();
+        const { prompt, bodyType, race, pose } = generateDrawingPrompt(category, gender, clothing);
 
         // Generate image using Replicate (this is the slow part)
         const imageUrl = await this.replicateService.generateImage(prompt);
@@ -65,17 +70,24 @@ export class ImagePoolService {
         // Download and upload to Supabase Storage
         const storagePath = await this.uploadImageToStorage(imageUrl);
 
-        // Save metadata to database
+        // Determine actual gender for storage
+        const actualGender = gender === 'both' ? (Math.random() > 0.5 ? 'male' : 'female') : gender;
+
+        // Save metadata to database using new schema
         const { data, error } = await supabase
           .from('drawing_images')
           .insert({
             image_url: imageUrl,
             storage_path: storagePath,
             prompt,
-            body_type: bodyType,
-            race: race,
-            pose: pose,
-            angle: angle
+            category: category,
+            subject_type: actualGender,
+            clothing_state: clothing,
+            attributes: {
+              body_type: bodyType,
+              race: race,
+              pose: pose
+            }
           })
           .select()
           .single();
