@@ -5,9 +5,10 @@ import React from 'react';
 interface PianoProps {
   pressedKeys: Set<number>;
   chordPlaybackKeys?: Set<number>; // Keys to highlight during chord playback
+  targetChordKeys?: Set<number>; // Keys to highlight for target chord
 }
 
-const Piano: React.FC<PianoProps> = ({ pressedKeys, chordPlaybackKeys = new Set() }) => {
+const Piano: React.FC<PianoProps> = ({ pressedKeys, chordPlaybackKeys = new Set(), targetChordKeys = new Set() }) => {
 
   const generateKeys = () => {
     const keys = [];
@@ -16,9 +17,9 @@ const Piano: React.FC<PianoProps> = ({ pressedKeys, chordPlaybackKeys = new Set(
     const blackKeyHeight = 100;
     const whiteKeyHeight = 160;
 
-    // Start from A0 (MIDI 21) and go to C8 (MIDI 108)
-    const startMidi = 21; // A0
-    const endMidi = 108;  // C8
+    // Display C2 to B5 (four octaves)
+    const startMidi = 36; // C2
+    const endMidi = 83;   // B5
 
     // First, generate all white keys
     let whiteKeyIndex = 0;
@@ -35,6 +36,8 @@ const Piano: React.FC<PianoProps> = ({ pressedKeys, chordPlaybackKeys = new Set(
           bgColor = 'bg-blue-300'; // User pressed keys (blue)
         } else if (chordPlaybackKeys.has(midiNote)) {
           bgColor = 'bg-pink-200'; // Chord playback keys (light pink)
+        } else if (targetChordKeys.has(midiNote)) {
+          bgColor = 'bg-orange-300'; // Target chord keys (orange)
         }
 
         keys.push(
@@ -86,6 +89,8 @@ const Piano: React.FC<PianoProps> = ({ pressedKeys, chordPlaybackKeys = new Set(
           bgColor = 'bg-blue-600'; // User pressed keys (darker blue)
         } else if (chordPlaybackKeys.has(midiNote)) {
           bgColor = 'bg-pink-400'; // Chord playback keys (darker pink for black keys)
+        } else if (targetChordKeys.has(midiNote)) {
+          bgColor = 'bg-orange-500'; // Target chord keys (darker orange for black keys)
         }
 
         keys.push(
@@ -107,21 +112,14 @@ const Piano: React.FC<PianoProps> = ({ pressedKeys, chordPlaybackKeys = new Set(
     return keys;
   };
 
+  // Calculate width based on number of white keys (28 white keys from C2 to B5)
+  const whiteKeyCount = 28;
+  const whiteKeyWidth = 40;
+  const totalWidth = whiteKeyCount * whiteKeyWidth;
+
   return (
-    <div className="relative bg-gray-100 p-4 rounded-lg shadow-lg">
-      <div className="relative" style={{ width: '1400px', height: '180px' }}>
-        {generateKeys()}
-      </div>
-      {pressedKeys.size > 0 && (
-        <div className="text-xs text-gray-600 mt-2">
-          Pressed MIDI notes: {Array.from(pressedKeys).sort((a, b) => a - b).map(note => {
-            const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-            const octave = Math.floor(note / 12) - 1;
-            const noteIndex = note % 12;
-            return `${note} (${noteNames[noteIndex]}${octave})`;
-          }).join(', ')}
-        </div>
-      )}
+    <div className="relative" style={{ width: `${totalWidth}px`, height: '180px' }}>
+      {generateKeys()}
     </div>
   );
 };

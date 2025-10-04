@@ -113,7 +113,6 @@ export class CompositeInputService implements InputService {
   }
 
   setAudioOptions(options: AudioOptions): void {
-    this.midiService.setAudioOptions(options);
-    this.keyboardService.setAudioOptions(options);
+    // Audio disabled - do nothing
   }
 }

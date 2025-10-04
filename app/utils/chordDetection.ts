@@ -9,31 +9,169 @@ export const detectChord = (midiNotes: number[]): string => {
     return '';
   }
 
-  const noteNames = midiNotes.map(midiNoteToName);
+  // Sort MIDI notes to find the lowest (bass note)
+  const sortedMidiNotes = [...midiNotes].sort((a, b) => a - b);
+  const noteNames = sortedMidiNotes.map(midiNoteToName);
   const uniqueNotes = [...new Set(noteNames.map(note => Note.pitchClass(note)))];
 
   if (uniqueNotes.length < 3) {
     return '';
   }
 
-  const detectedChord = Chord.detect(uniqueNotes);
+  // Get the bass note (lowest pitch)
+  const bassNote = Note.pitchClass(noteNames[0]);
 
-  return detectedChord.length > 0 ? detectedChord[0] : '';
+  // Detect possible chords
+  const detectedChords = Chord.detect(uniqueNotes);
+
+  if (detectedChords.length === 0) {
+    return '';
+  }
+
+  // Find the chord that matches with the correct bass note (inversion)
+  for (const chordName of detectedChords) {
+    const chord = Chord.get(chordName);
+    const rootNote = Note.pitchClass(chord.tonic);
+
+    if (rootNote === bassNote) {
+      // Root position
+      return chordName;
+    } else {
+      // Check if it's an inversion
+      const chordNotes = chord.notes.map(note => Note.pitchClass(note));
+      const bassIndex = chordNotes.indexOf(bassNote);
+
+      if (bassIndex > 0) {
+        // It's an inversion - append slash notation
+        return `${chordName}/${bassNote}`;
+      }
+    }
+  }
+
+  // Fallback to first detected chord
+  return detectedChords[0];
+};
+
+export interface SessionConfig {
+  chordCount: number;
+  mode: 'scales' | 'chordTypes';
+  chordTypes: string[];
+  scales: string[];
+}
+
+export const CHORD_TYPES = [
+  { id: 'maj', name: 'Major', suffix: '' },
+  { id: 'min', name: 'Minor', suffix: 'm' },
+  { id: 'dim', name: 'Diminished', suffix: 'dim' },
+  { id: 'maj7', name: 'Major 7th', suffix: 'maj7' },
+  { id: 'min7', name: 'Minor 7th', suffix: 'm7' },
+  { id: 'dom7', name: 'Dominant 7th', suffix: '7' },
+  { id: 'm7b5', name: 'Half Diminished', suffix: 'm7b5' }
+];
+
+export const SCALES = [
+  { id: 'C', name: 'C' },
+  { id: 'Db', name: 'C# / Db' },
+  { id: 'D', name: 'D' },
+  { id: 'Eb', name: 'D# / Eb' },
+  { id: 'E', name: 'E' },
+  { id: 'F', name: 'F' },
+  { id: 'Gb', name: 'F# / Gb' },
+  { id: 'G', name: 'G' },
+  { id: 'Ab', name: 'G# / Ab' },
+  { id: 'A', name: 'A' },
+  { id: 'Bb', name: 'A# / Bb' },
+  { id: 'B', name: 'B' }
+];
+
+const getScaleChords = (scaleRoot: string, chordTypes: string[]): string[] => {
+  const chords: string[] = [];
+
+  // Major scale chord progressions (I, ii, iii, IV, V, vi, vii°)
+  const majorScaleIntervals = [0, 2, 4, 5, 7, 9, 11]; // Semitone intervals
+  const majorScaleQualities = ['maj', 'min', 'min', 'maj', 'maj', 'min', 'dim'];
+
+  const rootNote = Note.get(scaleRoot);
+  const rootChroma = rootNote.chroma || 0;
+
+  for (let i = 0; i < 7; i++) {
+    const chordChroma = (rootChroma + majorScaleIntervals[i]) % 12;
+    const chordRoot = Note.fromMidi(60 + chordChroma); // Get note name from MIDI
+    const chordRootName = Note.pitchClass(chordRoot);
+
+    const naturalQuality = majorScaleQualities[i];
+
+    // Only include chord types that were selected AND match the natural diatonic quality
+    for (const selectedType of chordTypes) {
+      const chordType = CHORD_TYPES.find(ct => ct.id === selectedType);
+      if (!chordType) continue;
+
+      // Only add chords that match the natural diatonic quality for this scale degree
+      if (selectedType === naturalQuality) {
+        chords.push(chordRootName + chordType.suffix);
+      }
+    }
+  }
+
+  return chords;
+};
+
+const getAllChromaticChords = (chordTypes: string[]): string[] => {
+  const chords: string[] = [];
+  const chromaToNote = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+  for (const selectedType of chordTypes) {
+    const chordType = CHORD_TYPES.find(ct => ct.id === selectedType);
+    if (!chordType) continue;
+
+    // Add this chord type on all 12 chromatic roots
+    for (const root of chromaToNote) {
+      chords.push(root + chordType.suffix);
+    }
+  }
+
+  return chords;
+};
+
+export const generateSessionChords = (config: SessionConfig): string[] => {
+  let allChords: string[] = [];
+
+  if (config.mode === 'scales') {
+    // Scale mode: generate diatonic chords from selected scales
+    for (const scale of config.scales) {
+      // In scale mode, use all available chord types that fit the scale
+      const allChordTypes = CHORD_TYPES.map(ct => ct.id);
+      const scaleChords = getScaleChords(scale, allChordTypes);
+      allChords.push(...scaleChords);
+    }
+  } else {
+    // Chord type mode: generate selected chord types on all chromatic roots
+    allChords = getAllChromaticChords(config.chordTypes);
+  }
+
+  // Remove duplicates
+  const uniqueChords = [...new Set(allChords)];
+
+  // Randomly select the requested number of chords
+  const sessionChords: string[] = [];
+  for (let i = 0; i < config.chordCount; i++) {
+    const randomChord = uniqueChords[Math.floor(Math.random() * uniqueChords.length)];
+    sessionChords.push(randomChord);
+  }
+
+  return sessionChords;
 };
 
 export const getRandomChord = (): string => {
-  const commonChords = [
-    'C', 'Dm', 'Em', 'F', 'G', 'Am', 'Bdim',
-    'Cmaj7', 'Dm7', 'Em7', 'Fmaj7', 'G7', 'Am7', 'Bm7b5',
-    'D', 'Em', 'F#m', 'G', 'A', 'Bm', 'C#dim',
-    'E', 'F#m', 'G#m', 'A', 'B', 'C#m', 'D#dim',
-    'F', 'Gm', 'Am', 'Bb', 'C', 'Dm', 'Edim',
-    'G', 'Am', 'Bm', 'C', 'D', 'Em', 'F#dim',
-    'A', 'Bm', 'C#m', 'D', 'E', 'F#m', 'G#dim',
-    'Bb', 'Cm', 'Dm', 'Eb', 'F', 'Gm', 'Adim'
-  ];
+  // Fallback for backward compatibility
+  const defaultConfig: SessionConfig = {
+    chordCount: 1,
+    chordTypes: ['maj', 'min'],
+    scales: ['C']
+  };
 
-  return commonChords[Math.floor(Math.random() * commonChords.length)];
+  const chords = generateSessionChords(defaultConfig);
+  return chords[0] || 'C';
 };
 
 export const getChordNotes = (chordName: string): string[] => {

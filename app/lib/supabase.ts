@@ -14,11 +14,17 @@ export type DrawingImage = {
   image_url: string;
   storage_path: string;
   prompt: string;
-  body_type: string;
-  race: string;
-  pose: string;
-  angle: string;
+  category: string;
+  subject_type: string;
+  clothing_state: string;
+  attributes: Record<string, any>;
+  base_image_id?: string;
   created_at: string;
   used_count: number;
   last_used_at?: string;
+  // Legacy fields (will be deprecated after migration)
+  body_type?: string;
+  race?: string;
+  pose?: string;
+  angle?: string;
 };

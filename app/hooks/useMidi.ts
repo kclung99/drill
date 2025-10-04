@@ -12,7 +12,6 @@ interface InputState {
   activeMode: 'midi' | 'keyboard' | null;
   keyboardMapping: Record<string, number> | null;
   currentOctave: number | null;
-  audioEnabled: boolean;
 }
 
 export const useInput = (mode: InputMode = 'auto') => {
@@ -24,7 +23,6 @@ export const useInput = (mode: InputMode = 'auto') => {
     activeMode: null,
     keyboardMapping: null,
     currentOctave: null,
-    audioEnabled: true,
   });
 
   const serviceRef = useRef<CompositeInputService | null>(null);
@@ -105,25 +103,10 @@ export const useInput = (mode: InputMode = 'auto') => {
     };
   }, [connect, disconnect]);
 
-  const setAudioEnabled = useCallback((enabled: boolean) => {
-    if (serviceRef.current) {
-      serviceRef.current.setAudioOptions({ enabled });
-    }
-    setInputState(prev => ({ ...prev, audioEnabled: enabled }));
-  }, []);
-
-  const setAudioVolume = useCallback((volume: number) => {
-    if (serviceRef.current) {
-      serviceRef.current.setAudioOptions({ enabled: inputState.audioEnabled, volume });
-    }
-  }, [inputState.audioEnabled]);
-
   return {
     ...inputState,
     connect,
     disconnect,
-    setAudioEnabled,
-    setAudioVolume,
   };
 };
 

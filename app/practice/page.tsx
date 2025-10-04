@@ -3,17 +3,43 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useMidi } from '../hooks/useMidi';
 import Piano from '../components/Piano';
-import { detectChord, getRandomChord, chordsMatch, getChordNotes, playChord, getChordMidiNotes } from '../utils/chordDetection';
+import { detectChord, chordsMatch, getChordNotes, getChordMidiNotes, SessionConfig, CHORD_TYPES, SCALES, generateSessionChords } from '../utils/chordDetection';
+import { incrementSession } from '../utils/habitTracker';
 import Link from 'next/link';
 
+interface SessionResult {
+  chord: string;
+  attempts: number;
+  correctTime: number;
+  totalTime: number;
+}
+
 export default function PracticeMode() {
-  const { pressedKeys, isConnected, isSupported, error, activeMode, currentOctave, audioEnabled, setAudioEnabled } = useMidi();
-  const [targetChord, setTargetChord] = useState<string>('');
+  const { pressedKeys, isSupported, activeMode } = useMidi();
+
+  // Session configuration
+  const [sessionConfig, setSessionConfig] = useState<SessionConfig>({
+    chordCount: 3,
+    mode: 'chordTypes',
+    chordTypes: ['maj', 'min'],
+    scales: ['C']
+  });
+
+  // Session state
+  const [sessionChords, setSessionChords] = useState<string[]>([]);
+  const [currentChordIndex, setCurrentChordIndex] = useState(0);
+  const [sessionResults, setSessionResults] = useState<SessionResult[]>([]);
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [isSessionComplete, setIsSessionComplete] = useState(false);
+
+  // Current chord state
   const [startTime, setStartTime] = useState<number | null>(null);
-  const [responseTime, setResponseTime] = useState<number | null>(null);
-  const [score, setScore] = useState(0);
+  const [currentTime, setCurrentTime] = useState<number>(0);
   const [isWaitingForNext, setIsWaitingForNext] = useState(false);
-  const [chordPlaybackKeys, setChordPlaybackKeys] = useState<Set<number>>(new Set());
+  const [showChordNotes, setShowChordNotes] = useState(false);
+  const [currentAttempts, setCurrentAttempts] = useState(0);
+
+  const targetChord = sessionChords[currentChordIndex] || '';
 
   const currentChord = useMemo(() => {
     if (pressedKeys.size === 0) return '';
@@ -24,43 +50,116 @@ export default function PracticeMode() {
     return currentChord && targetChord && chordsMatch(currentChord, targetChord);
   }, [currentChord, targetChord]);
 
-  const generateNewChord = () => {
-    const newChord = getRandomChord();
-    setTargetChord(newChord);
+  const targetChordNotes = targetChord ? getChordNotes(targetChord) : [];
+  const hasValidAttempt = useMemo(() => {
+    // Only count as an attempt when user plays the expected number of notes
+    return pressedKeys.size >= 3 && pressedKeys.size === targetChordNotes.length;
+  }, [pressedKeys.size, targetChordNotes.length]);
+
+  // Track when user makes an attempt
+  const [lastAttemptKeys, setLastAttemptKeys] = useState<Set<number>>(new Set());
+
+  const startSession = () => {
+    const chords = generateSessionChords(sessionConfig);
+    setSessionChords(chords);
+    setCurrentChordIndex(0);
+    setSessionResults([]);
+    setIsSessionActive(true);
+    setIsSessionComplete(false);
+    startCurrentChord();
+  };
+
+  const startCurrentChord = () => {
     setStartTime(Date.now());
-    setResponseTime(null);
+    setCurrentTime(0);
     setIsWaitingForNext(false);
+    setShowChordNotes(false);
+    setCurrentAttempts(0);
+    setLastAttemptKeys(new Set());
   };
 
-  const handleNext = () => {
-    generateNewChord();
-  };
-
-  const handlePlayChord = async () => {
-    const midiNotes = getChordMidiNotes(targetChord);
-    setChordPlaybackKeys(new Set(midiNotes));
-
-    // Play the chord
-    await playChord(targetChord);
-
-    // Clear the visual highlighting after the chord finishes playing
-    setTimeout(() => {
-      setChordPlaybackKeys(new Set());
-    }, 1500); // Match the duration in playChord function
-  };
-
-  useEffect(() => {
-    if (isCorrect && startTime && !isWaitingForNext) {
-      const time = Date.now() - startTime;
-      setResponseTime(time);
-      setScore(prev => prev + 1);
-      setIsWaitingForNext(true);
+  const nextChord = () => {
+    if (currentChordIndex < sessionChords.length - 1) {
+      setCurrentChordIndex(prev => prev + 1);
+      startCurrentChord();
+    } else {
+      // Session complete
+      setIsSessionActive(false);
+      setIsSessionComplete(true);
+      // Increment music session in habit tracker
+      incrementSession('music');
     }
-  }, [isCorrect, startTime, isWaitingForNext]);
+  };
 
+
+
+  // Real-time stopwatch effect
   useEffect(() => {
-    generateNewChord();
-  }, []);
+    let interval: NodeJS.Timeout;
+    if (startTime && !isWaitingForNext && isSessionActive) {
+      interval = setInterval(() => {
+        setCurrentTime(Date.now() - startTime);
+      }, 10); // Update every 10ms for smooth timer
+    }
+    return () => clearInterval(interval);
+  }, [startTime, isWaitingForNext, isSessionActive]);
+
+  // Track attempts when user plays enough keys and releases them
+  useEffect(() => {
+    if (hasValidAttempt && startTime && isSessionActive && !isWaitingForNext) {
+      // Check if this is a new attempt (different key combination)
+      const currentKeysStr = Array.from(pressedKeys).sort().join(',');
+      const lastKeysStr = Array.from(lastAttemptKeys).sort().join(',');
+
+      if (currentKeysStr !== lastKeysStr && pressedKeys.size >= 3) {
+        setLastAttemptKeys(new Set(pressedKeys));
+        setCurrentAttempts(prev => prev + 1);
+
+        if (isCorrect) {
+          // Correct answer - finish the chord after a short delay
+          setTimeout(() => {
+            if (startTime) {
+              const totalTime = Date.now() - startTime;
+              const result: SessionResult = {
+                chord: targetChord,
+                attempts: currentAttempts + 1, // +1 because state hasn't updated yet
+                correctTime: totalTime,
+                totalTime: totalTime
+              };
+              setSessionResults(prev => [...prev, result]);
+              setIsWaitingForNext(true);
+
+              // Auto-advance to next chord
+              setTimeout(() => {
+                nextChord();
+              }, 500);
+            }
+          }, 200); // Small delay to let user see the result
+        }
+      }
+    }
+  }, [hasValidAttempt, isCorrect, startTime, isSessionActive, targetChord, currentAttempts, isWaitingForNext, pressedKeys, lastAttemptKeys]);
+
+  // Calculate session metrics
+  const sessionMetrics = useMemo(() => {
+    if (sessionResults.length === 0) return null;
+
+    const totalAttempts = sessionResults.reduce((sum, r) => sum + r.attempts, 0);
+    const correctChords = sessionResults.filter(r => r.correctTime > 0).length;
+    const avgCorrectTime = correctChords > 0
+      ? sessionResults.filter(r => r.correctTime > 0).reduce((sum, r) => sum + r.correctTime, 0) / correctChords
+      : 0;
+    const correctTimes = sessionResults.filter(r => r.correctTime > 0).map(r => r.correctTime);
+
+    return {
+      totalAttempts,
+      correctChords,
+      attemptAccuracy: totalAttempts > 0 ? (correctChords / totalAttempts) * 100 : 0,
+      avgCorrectTime: avgCorrectTime / 1000,
+      fastestTime: correctTimes.length > 0 ? Math.min(...correctTimes) / 1000 : 0,
+      slowestTime: correctTimes.length > 0 ? Math.max(...correctTimes) / 1000 : 0
+    };
+  }, [sessionResults]);
 
   if (!isSupported) {
     return (
@@ -76,133 +175,293 @@ export default function PracticeMode() {
     );
   }
 
-  const targetChordNotes = targetChord ? getChordNotes(targetChord) : [];
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Practice Mode</h1>
-          <p className="text-gray-600 mb-6">Play the target chord as quickly as possible</p>
-
-          <div className="flex justify-center gap-4 mb-6">
-            <Link href="/" className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-              Home
-            </Link>
-            <Link href="/live" className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-              Live Mode
-            </Link>
-            <button
-              onClick={() => setAudioEnabled(!audioEnabled)}
-              className={`px-4 py-2 rounded font-medium ${
-                audioEnabled
-                  ? 'bg-purple-500 text-white hover:bg-purple-600'
-                  : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
-              }`}
-            >
-              🔊 {audioEnabled ? 'Audio On' : 'Audio Off'}
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="text-center">
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">Input</h2>
-              <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                isConnected
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-red-100 text-red-800'
-              }`}>
-                <div className={`w-2 h-2 rounded-full mr-2 ${
-                  isConnected ? 'bg-green-500' : 'bg-red-500'
-                }`}></div>
-                {isConnected
-                  ? `${activeMode === 'midi' ? 'MIDI' : 'Keyboard'}`
-                  : 'Disconnected'
-                }
-              </div>
-              {activeMode === 'keyboard' && (
-                <div className="mt-1">
-                  <p className="text-blue-600 text-xs">Use computer keys!</p>
-                  {currentOctave !== null && (
-                    <p className="text-green-600 text-xs">C{currentOctave} (Z/X)</p>
-                  )}
-                </div>
-              )}
-              {error && (
-                <p className="text-red-600 mt-2 text-xs">{error}</p>
-              )}
+  // Session Configuration UI
+  if (!isSessionActive && !isSessionComplete) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <nav className="p-8">
+          <div className="flex justify-between items-center">
+            <div className="flex-1" />
+            <div className="flex justify-center gap-4">
+              <Link href="/" className="text-blue-600 hover:underline font-medium">
+                home
+              </Link>
+              <Link href="/live" className="text-blue-600 hover:underline font-medium">
+                live
+              </Link>
+              <Link href="/practice" className="text-blue-600 font-medium underline">
+                chord
+              </Link>
+              <Link href="/drawing" className="text-blue-600 hover:underline font-medium">
+                reference
+              </Link>
             </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="text-center">
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">Score</h2>
-              <div className="text-3xl font-bold text-blue-600">{score}</div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="text-center">
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">Last Time</h2>
-              <div className="text-2xl font-bold text-green-600">
-                {responseTime ? `${(responseTime / 1000).toFixed(2)}s` : '—'}
+            <div className="flex-1 flex justify-end">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${activeMode === 'midi' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                <span className="text-sm text-gray-600">
+                  {activeMode === 'midi' ? 'midi' : 'keyboard'}
+                </span>
               </div>
             </div>
           </div>
-        </div>
+        </nav>
 
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-gray-700 mb-4">Target Chord</h2>
-            <div className="text-8xl font-bold text-purple-600 mb-4">
-              {targetChord}
+        <div className="flex-1 p-8 flex flex-col items-center justify-center">
+          <div className="max-w-2xl w-full space-y-8">
+
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-sm text-gray-500">count</div>
+              <div className="flex justify-center gap-2">
+                {[3, 20, 30, 40].map(count => (
+                  <button
+                    key={count}
+                    onClick={() => setSessionConfig(prev => ({ ...prev, chordCount: count }))}
+                    className={`px-4 py-2 text-sm border border-gray-400 ${
+                      sessionConfig.chordCount === count
+                        ? 'bg-black text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
             </div>
-            {targetChordNotes.length > 0 && (
-              <div className="text-gray-600 mb-6">
-                Notes: {targetChordNotes.join(' - ')}
+
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-sm text-gray-500">mode</div>
+              <div className="flex justify-center gap-2">
+                <button
+                  onClick={() => setSessionConfig(prev => ({ ...prev, mode: 'chordTypes' }))}
+                  className={`px-4 py-2 text-sm border border-gray-400 ${
+                    sessionConfig.mode === 'chordTypes'
+                      ? 'bg-black text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  types
+                </button>
+                <button
+                  onClick={() => setSessionConfig(prev => ({ ...prev, mode: 'scales' }))}
+                  className={`px-4 py-2 text-sm border border-gray-400 ${
+                    sessionConfig.mode === 'scales'
+                      ? 'bg-black text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  scales
+                </button>
+              </div>
+            </div>
+
+            {sessionConfig.mode === 'chordTypes' && (
+              <div className="flex flex-wrap justify-center gap-2">
+                {CHORD_TYPES.map(chordType => (
+                  <button
+                    key={chordType.id}
+                    onClick={() => {
+                      setSessionConfig(prev => ({
+                        ...prev,
+                        chordTypes: prev.chordTypes.includes(chordType.id)
+                          ? prev.chordTypes.filter(t => t !== chordType.id)
+                          : [...prev.chordTypes, chordType.id]
+                      }));
+                    }}
+                    className={`px-3 py-2 text-sm border border-gray-400 ${
+                      sessionConfig.chordTypes.includes(chordType.id)
+                        ? 'bg-black text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {chordType.name}
+                  </button>
+                ))}
               </div>
             )}
 
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Your Input</h3>
-              <div className={`text-4xl font-bold ${
-                isCorrect ? 'text-green-600' : 'text-gray-400'
-              }`}>
-                {currentChord || '—'}
+            {sessionConfig.mode === 'scales' && (
+              <div className="flex flex-wrap justify-center gap-2">
+                {SCALES.map(scale => (
+                  <button
+                    key={scale.id}
+                    onClick={() => {
+                      setSessionConfig(prev => ({
+                        ...prev,
+                        scales: prev.scales.includes(scale.id)
+                          ? prev.scales.filter(s => s !== scale.id)
+                          : [...prev.scales, scale.id]
+                      }));
+                    }}
+                    className={`px-3 py-2 text-sm border border-gray-400 ${
+                      sessionConfig.scales.includes(scale.id)
+                        ? 'bg-black text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {scale.name}
+                  </button>
+                ))}
               </div>
-              {isCorrect && (
-                <div className="text-green-600 font-semibold mt-2">✓ Correct!</div>
-              )}
-            </div>
+            )}
 
-            <div className="flex gap-4 justify-center">
-              {isWaitingForNext && (
-                <button
-                  onClick={handleNext}
-                  className="bg-purple-500 text-white px-6 py-3 rounded-lg hover:bg-purple-600 font-semibold"
-                >
-                  Next Chord
-                </button>
-              )}
-
+            <div className="flex justify-center">
               <button
-                onClick={handlePlayChord}
-                className="bg-yellow-500 text-white px-6 py-3 rounded-lg hover:bg-yellow-600 font-semibold"
-                disabled={!targetChord}
+                onClick={startSession}
+                disabled={
+                  (sessionConfig.mode === 'chordTypes' && sessionConfig.chordTypes.length === 0) ||
+                  (sessionConfig.mode === 'scales' && sessionConfig.scales.length === 0)
+                }
+                className="text-blue-600 underline text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                🔊 Play Chord
+                start
               </button>
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
 
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-lg font-semibold text-gray-700 mb-4 text-center">Piano</h2>
-          <div className="flex justify-center overflow-x-auto">
-            <Piano pressedKeys={pressedKeys} chordPlaybackKeys={chordPlaybackKeys} />
+  // Session Results UI
+  if (isSessionComplete && sessionMetrics) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <nav className="p-8">
+          <div className="flex justify-between items-center">
+            <div className="flex-1" />
+            <div className="flex justify-center gap-4">
+              <Link href="/" className="text-blue-600 hover:underline font-medium">
+                home
+              </Link>
+              <Link href="/live" className="text-blue-600 hover:underline font-medium">
+                live
+              </Link>
+              <Link href="/practice" className="text-blue-600 font-medium underline">
+                chord
+              </Link>
+              <Link href="/drawing" className="text-blue-600 hover:underline font-medium">
+                reference
+              </Link>
+            </div>
+            <div className="flex-1 flex justify-end">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${activeMode === 'midi' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                <span className="text-sm text-gray-600">
+                  {activeMode === 'midi' ? 'midi' : 'keyboard'}
+                </span>
+              </div>
+            </div>
           </div>
+        </nav>
+
+        <div className="flex-1 p-8 flex flex-col items-center justify-center gap-8">
+          <div className="text-4xl font-bold text-blue-600">
+            {sessionMetrics.attemptAccuracy.toFixed(0)}%
+          </div>
+
+          <div className="flex gap-8 text-sm text-gray-600">
+            <div>{sessionMetrics.totalAttempts} attempts</div>
+            <div>{sessionMetrics.avgCorrectTime.toFixed(1)}s avg</div>
+            <div>{sessionMetrics.fastestTime.toFixed(1)}s best</div>
+          </div>
+
+          <div className="flex gap-4 text-sm">
+            <button
+              onClick={() => {
+                setIsSessionComplete(false);
+                setSessionResults([]);
+                startSession();
+              }}
+              className="text-blue-600 hover:underline"
+            >
+              again
+            </button>
+            <button
+              onClick={() => {
+                setIsSessionComplete(false);
+                setSessionResults([]);
+                setIsSessionActive(false);
+              }}
+              className="text-blue-600 hover:underline"
+            >
+              back
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <nav className="p-8">
+        <div className="flex justify-between items-center">
+          <div className="flex-1" />
+          <div className="flex justify-center gap-4">
+            <Link href="/" className="text-blue-600 hover:underline font-medium">
+              home
+            </Link>
+            <Link href="/live" className="text-blue-600 hover:underline font-medium">
+              live
+            </Link>
+            <Link href="/practice" className="text-blue-600 font-medium underline">
+              chord
+            </Link>
+            <Link href="/drawing" className="text-blue-600 hover:underline font-medium">
+              reference
+            </Link>
+          </div>
+          <div className="flex-1 flex justify-end">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${activeMode === 'midi' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+              <span className="text-sm text-gray-600">
+                {activeMode === 'midi' ? 'midi' : 'keyboard'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <div className="flex-1 p-8 flex flex-col items-center justify-center gap-8">
+
+        <div className="flex items-center gap-4 text-sm text-gray-500">
+          <div>{currentChordIndex + 1}/{sessionChords.length}</div>
+          <div>·</div>
+          <div>{(currentTime / 1000).toFixed(1)}s</div>
+          <div>·</div>
+          <div>{currentAttempts} attempts</div>
+        </div>
+
+        <div className="flex flex-col items-center gap-4">
+          <div className="text-6xl font-bold text-blue-600">
+            {targetChord}
+          </div>
+          <div className="text-lg text-gray-500 min-h-[28px]">
+            {showChordNotes && targetChordNotes.length > 0 ? (
+              targetChordNotes.join(' ')
+            ) : (
+              <button
+                onClick={() => setShowChordNotes(true)}
+                className="text-blue-600 hover:underline text-sm"
+              >
+                show
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className={`text-2xl font-bold ${
+          isCorrect ? 'text-green-600' : 'text-gray-400'
+        }`}>
+          {currentChord || '-'}
+        </div>
+
+        <div>
+          <Piano
+            pressedKeys={pressedKeys}
+            targetChordKeys={showChordNotes ? new Set(getChordMidiNotes(targetChord)) : new Set()}
+          />
         </div>
       </div>
     </div>

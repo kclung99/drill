@@ -55,30 +55,11 @@ export abstract class BaseInputService implements InputService {
 
   setAudioOptions(options: AudioOptions): void {
     this.audioOptions = { ...this.audioOptions, ...options };
+    // Audio disabled - do nothing
   }
 
   protected async emitEvent(event: InputEvent): Promise<void> {
     this.listeners.forEach(listener => listener(event));
-
-    // Play audio if enabled
-    if (this.audioOptions.enabled && typeof window !== 'undefined') {
-      try {
-        const { getAudioService } = await import('./audioService');
-        const audioService = getAudioService();
-
-        if (this.audioOptions.volume !== undefined) {
-          audioService.setVolume(this.audioOptions.volume);
-        }
-
-        if (event.type === 'noteOn') {
-          await audioService.playNote(event.note, event.velocity);
-        } else if (event.type === 'noteOff') {
-          await audioService.stopNote(event.note);
-        }
-      } catch (error) {
-        console.error('Audio playback failed:', error);
-        // Gracefully continue without audio
-      }
-    }
+    // Audio disabled
   }
 }
