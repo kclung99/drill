@@ -4,41 +4,70 @@ import { useState, useEffect } from 'react';
 import { ImagePoolService } from '../services/imagePoolService';
 import { DrawingImage } from '../lib/supabase';
 import { incrementSession } from '../utils/habitTracker';
+import { AuthGate } from '@/components/auth-gate';
 import Link from 'next/link';
 
 export default function DrawingPractice() {
   const [images, setImages] = useState<DrawingImage[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [duration, setDuration] = useState(60);
+  const [duration, setDuration] = useState<number | 'inf'>(60);
   const [imageCount, setImageCount] = useState(1);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [alwaysGenerateNew, setAlwaysGenerateNew] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
 
   const imagePoolService = new ImagePoolService();
 
+  // Wake lock effect
+  useEffect(() => {
+    if (isSessionActive) {
+      // Request wake lock when session starts
+      if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').then((lock) => {
+          setWakeLock(lock);
+        }).catch((err) => {
+          console.log('Wake lock failed:', err);
+        });
+      }
+    } else {
+      // Release wake lock when session ends
+      if (wakeLock) {
+        wakeLock.release();
+        setWakeLock(null);
+      }
+    }
+
+    return () => {
+      if (wakeLock) {
+        wakeLock.release();
+      }
+    };
+  }, [isSessionActive]);
+
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isSessionActive && !isPaused && timeRemaining > 0) {
+    // Only run timer if duration is not infinite
+    if (isSessionActive && !isPaused && timeRemaining > 0 && duration !== 'inf') {
       interval = setInterval(() => {
         setTimeRemaining(prev => prev - 1);
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isSessionActive, isPaused, timeRemaining]);
+  }, [isSessionActive, isPaused, timeRemaining, duration]);
 
   // Separate effect to handle when timer reaches 0
   useEffect(() => {
-    if (isSessionActive && timeRemaining === 0) {
+    if (isSessionActive && timeRemaining === 0 && duration !== 'inf') {
       // Check if we're at the last image
       if (currentImageIndex >= images.length - 1) {
         stopSession();
       } else {
         // Move to next image and reset timer
         setCurrentImageIndex(prev => prev + 1);
-        setTimeRemaining(duration);
+        setTimeRemaining(duration === 'inf' ? 0 : duration);
       }
     }
   }, [timeRemaining, isSessionActive, currentImageIndex, images.length, duration]);
@@ -57,7 +86,7 @@ export default function DrawingPractice() {
 
       setImages(sessionImages);
       setCurrentImageIndex(0);
-      setTimeRemaining(duration);
+      setTimeRemaining(duration === 'inf' ? 0 : duration);
       setIsSessionActive(true);
     } catch (error) {
       console.error('Failed to start session:', error);
@@ -77,6 +106,14 @@ export default function DrawingPractice() {
 
   const togglePause = () => {
     setIsPaused(prev => !prev);
+  };
+
+  const goToNext = () => {
+    if (currentImageIndex < images.length - 1) {
+      setCurrentImageIndex(prev => prev + 1);
+    } else {
+      stopSession();
+    }
   };
 
   const currentImage = images[currentImageIndex];
@@ -100,7 +137,8 @@ export default function DrawingPractice() {
         </div>
       </nav>
 
-      {!isSessionActive ? (
+      <AuthGate>
+        {!isSessionActive ? (
         <div className="flex-1 p-8 flex flex-col items-center justify-center">
           <div className="max-w-2xl w-full space-y-8">
 
@@ -126,17 +164,17 @@ export default function DrawingPractice() {
             <div className="flex flex-col items-center gap-2">
               <div className="text-sm text-gray-500">duration</div>
               <div className="flex justify-center gap-2">
-                {[30, 60, 90, 120].map(dur => (
+                {[30, 60, 90, 120, 'inf'].map(dur => (
                   <button
                     key={dur}
-                    onClick={() => setDuration(dur)}
+                    onClick={() => setDuration(dur as number | 'inf')}
                     className={`px-4 py-2 text-sm border border-gray-400 ${
                       duration === dur
                         ? 'bg-black text-white'
                         : 'bg-white text-gray-600 hover:bg-gray-100'
                     }`}
                   >
-                    {dur}s
+                    {dur === 'inf' ? 'inf' : `${dur}s`}
                   </button>
                 ))}
               </div>
@@ -180,15 +218,30 @@ export default function DrawingPractice() {
 
           <div className="flex-shrink-0 flex items-center justify-center gap-4 text-sm text-gray-500 py-6">
             <div>{currentImageIndex + 1}/{images.length}</div>
-            <div>·</div>
-            <div>{Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
-            <div>·</div>
-            <button
-              onClick={togglePause}
-              className="text-blue-600 hover:underline"
-            >
-              {isPaused ? 'resume' : 'pause'}
-            </button>
+            {duration !== 'inf' && (
+              <>
+                <div>·</div>
+                <div>{Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
+                <div>·</div>
+                <button
+                  onClick={togglePause}
+                  className="text-blue-600 hover:underline"
+                >
+                  {isPaused ? 'resume' : 'pause'}
+                </button>
+              </>
+            )}
+            {duration === 'inf' && (
+              <>
+                <div>·</div>
+                <button
+                  onClick={goToNext}
+                  className="text-blue-600 hover:underline"
+                >
+                  next
+                </button>
+              </>
+            )}
             <div>·</div>
             <button
               onClick={stopSession}
@@ -200,6 +253,7 @@ export default function DrawingPractice() {
 
         </div>
       )}
+      </AuthGate>
     </div>
   );
 }

@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Replicate from 'replicate';
+import { verifyToken, getTokenFromHeader } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   console.log('=== GENERATE IMAGE API CALLED ===');
+
+  // Check JWT authentication
+  const authHeader = request.headers.get('authorization');
+  const token = getTokenFromHeader(authHeader);
+
+  if (!token || !verifyToken(token)) {
+    console.log('❌ Unauthorized: Invalid or missing token');
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
   try {
     if (!process.env.REPLICATE_API_TOKEN) {
       console.log('❌ Missing REPLICATE_API_TOKEN');
