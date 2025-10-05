@@ -48,6 +48,7 @@ export default function RecentSessions() {
           <tr className="text-left text-gray-500 border-b border-gray-300">
             <th className="pb-2 font-normal">time</th>
             <th className="pb-2 font-normal">duration</th>
+            <th className="pb-2 font-normal">chords</th>
             <th className="pb-2 font-normal">avg</th>
             <th className="pb-2 font-normal">accuracy</th>
           </tr>
@@ -57,6 +58,7 @@ export default function RecentSessions() {
             <tr key={session.id} className="border-b border-gray-200">
               <td className="py-2 text-gray-600">{formatTimestamp(session.timestamp)}</td>
               <td className="py-2 text-gray-600">{session.config.duration}min</td>
+              <td className="py-2 text-gray-600">{session.metrics.totalChords}</td>
               <td className="py-2 text-gray-600">
                 {session.metrics.avgTimePerChord > 0
                   ? `${session.metrics.avgTimePerChord.toFixed(1)}s`
