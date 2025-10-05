@@ -296,7 +296,7 @@ export const migrateGuestData = async (): Promise<void> => {
 
 /**
  * Fetch data from Supabase and merge into localStorage
- * This is for multi-device sync (future feature)
+ * This syncs remote data to local for logged-in users
  */
 export const syncFromSupabase = async (): Promise<void> => {
   const { data: { user } } = await supabase.auth.getUser();
@@ -305,8 +305,118 @@ export const syncFromSupabase = async (): Promise<void> => {
     return;
   }
 
-  // TODO: Implement pull sync
-  // This would fetch habit_sessions and chord_practice_sessions from Supabase
-  // and merge them into localStorage (careful not to duplicate)
-  console.log('Pull sync not yet implemented');
+  const {
+    getHabitData,
+    saveHabitData,
+    getChordSessions,
+    DayHabitData,
+    ChordSession
+  } = await import('./localStorageService');
+
+  try {
+    // 1. Fetch habit sessions from Supabase
+    const { data: habitRows, error: habitError } = await supabase
+      .from('habit_sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('session_date', { ascending: false });
+
+    if (habitError) throw habitError;
+
+    // 2. Fetch chord sessions from Supabase
+    const { data: chordRows, error: chordError } = await supabase
+      .from('chord_practice_sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (chordError) throw chordError;
+
+    // 3. Merge habit sessions into localStorage
+    if (habitRows && habitRows.length > 0) {
+      const habitData = getHabitData();
+      const dayMap = new Map<string, { musicSessions: number; drawingSessions: number }>();
+
+      // Start with existing localStorage data
+      habitData.days.forEach(day => {
+        dayMap.set(day.date, { musicSessions: day.musicSessions, drawingSessions: day.drawingSessions });
+      });
+
+      // Aggregate Supabase sessions by date
+      habitRows.forEach(row => {
+        const date = row.session_date;
+        const existing = dayMap.get(date) || { musicSessions: 0, drawingSessions: 0 };
+
+        if (row.session_type === 'music') {
+          existing.musicSessions++;
+        } else {
+          existing.drawingSessions++;
+        }
+
+        dayMap.set(date, existing);
+      });
+
+      // Convert back to array
+      const mergedDays: DayHabitData[] = Array.from(dayMap.entries()).map(([date, counts]) => ({
+        date,
+        musicSessions: counts.musicSessions,
+        drawingSessions: counts.drawingSessions,
+      }));
+
+      // Save merged data
+      saveHabitData({
+        settings: habitData.settings,
+        days: mergedDays,
+      });
+    }
+
+    // 4. Merge chord sessions into localStorage
+    if (chordRows && chordRows.length > 0) {
+      const { saveChordSession: saveToLS } = await import('./localStorageService');
+      const existingSessions = getChordSessions();
+      const existingIds = new Set(existingSessions.map(s => s.id));
+
+      // Only add sessions that don't exist locally (avoid duplicates)
+      chordRows.forEach(row => {
+        // Use created_at timestamp as ID for Supabase sessions
+        const sessionId = `supabase-${row.id}`;
+
+        if (!existingIds.has(sessionId)) {
+          const session: Omit<ChordSession, 'id' | 'timestamp'> = {
+            config: {
+              duration: row.duration_minutes,
+              mode: row.mode as 'chordTypes' | 'scales',
+              chordTypes: row.chord_types || [],
+              scales: row.scales || [],
+            },
+            metrics: {
+              totalChords: row.total_chords,
+              totalAttempts: row.total_attempts,
+              accuracy: parseFloat(row.accuracy?.toString() || '0'),
+              avgTimePerChord: parseFloat(row.avg_time_per_chord?.toString() || '0'),
+              fastestTime: parseFloat(row.fastest_time?.toString() || '0'),
+              slowestTime: parseFloat(row.slowest_time?.toString() || '0'),
+            },
+            chordResults: (row.chord_results as unknown[]) || [],
+          };
+
+          // Save with custom ID and timestamp from Supabase
+          const localSession = {
+            ...session,
+            id: sessionId,
+            timestamp: new Date(row.created_at).getTime(),
+          };
+
+          // Manually add to localStorage without using saveChordSession (to preserve ID)
+          const sessions = getChordSessions();
+          sessions.push(localSession);
+          localStorage.setItem('drill-chord-sessions', JSON.stringify(sessions));
+        }
+      });
+    }
+
+    console.log('Sync from Supabase completed');
+  } catch (error) {
+    console.error('Failed to sync from Supabase:', error);
+  }
 };

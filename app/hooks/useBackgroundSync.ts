@@ -32,16 +32,24 @@ export const useBackgroundSync = () => {
       return;
     }
 
-    // Initial sync on mount
-    const doSync = async () => {
+    // Initial sync on mount (pull from Supabase first, then push any local changes)
+    const doInitialSync = async () => {
+      const { syncFromSupabase } = await import('@/app/services/supabaseSyncService');
+      await syncFromSupabase(); // Pull remote data first
+      const status = await syncToSupabase(); // Then push any local changes
+      setSyncStatus(status);
+    };
+
+    // Periodic sync (push only)
+    const doPeriodicSync = async () => {
       const status = await syncToSupabase();
       setSyncStatus(status);
     };
 
-    doSync();
+    doInitialSync();
 
-    // Set up periodic sync
-    const interval = setInterval(doSync, SYNC_INTERVAL_MS);
+    // Set up periodic sync (every 30s, push only)
+    const interval = setInterval(doPeriodicSync, SYNC_INTERVAL_MS);
 
     // Clean up on unmount
     return () => clearInterval(interval);
