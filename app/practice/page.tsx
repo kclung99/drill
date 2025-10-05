@@ -99,85 +99,50 @@ export default function PracticeMode() {
   const endSession = () => {
     setIsSessionActive(false);
     setIsSessionComplete(true);
-
-    // Calculate and save detailed session data
-    const metrics = calculateSessionMetrics(sessionResults, totalChordsAnswered);
-
-    // Save detailed session to localStorage and queue for Supabase
-    saveChordSessionData({
-      config: {
-        duration: sessionDuration,
-        mode: sessionConfig.mode,
-        chordTypes: sessionConfig.chordTypes,
-        scales: sessionConfig.scales,
-      },
-      metrics,
-      chordResults: sessionResults,
-    });
-
+    // Note: Session data will be saved in the effect below when isSessionComplete changes
     // Increment music session in habit tracker (also queues for Supabase)
     incrementSession('music');
   };
 
-  // Helper function to calculate metrics
-  const calculateSessionMetrics = (
-    results: SessionResult[],
-    correctChords: number
-  ) => {
-    if (results.length === 0) {
-      return {
-        totalChords: 0,
-        totalAttempts: 0,
-        accuracy: 0,
-        avgTimePerChord: 0,
-        fastestTime: 0,
-        slowestTime: 0,
+  // Save session data when session completes
+  useEffect(() => {
+    if (isSessionComplete && sessionResults.length > 0) {
+      // Calculate metrics
+      const totalAttempts = sessionResults.reduce((sum, r) => sum + r.attempts, 0);
+      const avgCorrectTime = totalChordsAnswered > 0
+        ? sessionResults.filter(r => r.correctTime > 0).reduce((sum, r) => sum + r.correctTime, 0) / totalChordsAnswered
+        : 0;
+      const correctTimes = sessionResults.filter(r => r.correctTime > 0).map(r => r.correctTime);
+
+      const metrics = {
+        totalChords: totalChordsAnswered,
+        totalAttempts,
+        accuracy: totalChordsAnswered > 0 ? (totalChordsAnswered / totalAttempts) * 100 : 0,
+        avgTimePerChord: avgCorrectTime / 1000, // convert to seconds
+        fastestTime: correctTimes.length > 0 ? Math.min(...correctTimes) / 1000 : 0,
+        slowestTime: correctTimes.length > 0 ? Math.max(...correctTimes) / 1000 : 0,
       };
+
+      // Save to localStorage and queue for Supabase sync
+      import('@/app/services/localStorageService').then(({ saveChordSession }) => {
+        const session = saveChordSession({
+          config: {
+            duration: sessionDuration,
+            mode: sessionConfig.mode,
+            chordTypes: sessionConfig.chordTypes,
+            scales: sessionConfig.scales,
+          },
+          metrics,
+          chordResults: sessionResults,
+        });
+
+        // Queue for Supabase sync
+        import('@/app/services/supabaseSyncService').then(({ queueChordSession }) => {
+          queueChordSession(session);
+        });
+      });
     }
-
-    const totalAttempts = results.reduce((sum, r) => sum + r.attempts, 0);
-    const avgCorrectTime = correctChords > 0
-      ? results.filter(r => r.correctTime > 0).reduce((sum, r) => sum + r.correctTime, 0) / correctChords
-      : 0;
-    const correctTimes = results.filter(r => r.correctTime > 0).map(r => r.correctTime);
-
-    return {
-      totalChords: correctChords,
-      totalAttempts,
-      accuracy: correctChords > 0 ? (correctChords / totalAttempts) * 100 : 0,
-      avgTimePerChord: avgCorrectTime / 1000, // convert to seconds
-      fastestTime: correctTimes.length > 0 ? Math.min(...correctTimes) / 1000 : 0,
-      slowestTime: correctTimes.length > 0 ? Math.max(...correctTimes) / 1000 : 0,
-    };
-  };
-
-  // Helper function to save chord session
-  const saveChordSessionData = (sessionData: {
-    config: { duration: number; mode: 'chordTypes' | 'scales'; chordTypes: string[]; scales: string[] };
-    metrics: {
-      totalChords: number;
-      totalAttempts: number;
-      accuracy: number;
-      avgTimePerChord: number;
-      fastestTime: number;
-      slowestTime: number;
-    };
-    chordResults: SessionResult[];
-  }) => {
-    // Save to localStorage and queue for Supabase sync
-    import('@/app/services/localStorageService').then(({ saveChordSession }) => {
-      const session = saveChordSession({
-        config: sessionData.config,
-        metrics: sessionData.metrics,
-        chordResults: sessionData.chordResults,
-      });
-
-      // Queue for Supabase sync
-      import('@/app/services/supabaseSyncService').then(({ queueChordSession }) => {
-        queueChordSession(session);
-      });
-    });
-  };
+  }, [isSessionComplete, sessionResults, totalChordsAnswered, sessionDuration, sessionConfig]);
 
 
 
@@ -294,7 +259,7 @@ export default function PracticeMode() {
             <div className="flex flex-col items-center gap-2">
               <div className="text-sm text-gray-500">duration</div>
               <div className="flex justify-center gap-2">
-                {[3, 5, 10, 20].map(duration => (
+                {[1, 3, 5, 10, 20].map(duration => (
                   <button
                     key={duration}
                     onClick={() => setSessionDuration(duration)}
