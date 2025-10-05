@@ -1,23 +1,8 @@
 -- Migration: Create tracking tables for localStorage-first hybrid sync
--- This creates tables for habit tracking and music practice analytics
+-- This creates tables for music practice analytics
+-- Note: Heatmap data is derived from chord_practice_sessions (no separate habit_sessions table)
 
--- Step 1: Create habit_sessions table
--- Purpose: Simple session logging for heatmap (one row per completed session)
-CREATE TABLE IF NOT EXISTS habit_sessions (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  session_type TEXT NOT NULL CHECK (session_type IN ('music', 'drawing')),
-  session_date DATE NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Create indexes for efficient queries
-CREATE INDEX IF NOT EXISTS idx_habit_sessions_user_date
-  ON habit_sessions(user_id, session_date);
-CREATE INDEX IF NOT EXISTS idx_habit_sessions_user_type_date
-  ON habit_sessions(user_id, session_type, session_date);
-
--- Step 2: Create chord_practice_sessions table
+-- Step 1: Create chord_practice_sessions table
 -- Purpose: Detailed music practice analytics (one row per practice session)
 CREATE TABLE IF NOT EXISTS chord_practice_sessions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -52,22 +37,10 @@ CREATE INDEX IF NOT EXISTS idx_chord_sessions_created_at
 CREATE INDEX IF NOT EXISTS idx_chord_sessions_user_date
   ON chord_practice_sessions(user_id, created_at DESC);
 
--- Step 3: Enable Row Level Security (RLS)
-ALTER TABLE habit_sessions ENABLE ROW LEVEL SECURITY;
+-- Step 2: Enable Row Level Security (RLS)
 ALTER TABLE chord_practice_sessions ENABLE ROW LEVEL SECURITY;
 
--- Step 4: Create RLS policies for habit_sessions
--- Users can only view their own habit sessions
-CREATE POLICY "Users can view their own habit sessions"
-  ON habit_sessions FOR SELECT
-  USING (auth.uid() = user_id);
-
--- Users can insert their own habit sessions
-CREATE POLICY "Users can insert their own habit sessions"
-  ON habit_sessions FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
--- Step 5: Create RLS policies for chord_practice_sessions
+-- Step 3: Create RLS policies for chord_practice_sessions
 -- Users can only view their own chord sessions
 CREATE POLICY "Users can view their own chord sessions"
   ON chord_practice_sessions FOR SELECT

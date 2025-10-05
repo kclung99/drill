@@ -46,22 +46,15 @@ const getTodayInTimezone = (): string => {
 };
 
 /**
- * Increment session counter and queue for Supabase sync
- * This is the main entry point for tracking sessions
+ * Increment session counter in localStorage
+ * Note: For music sessions, heatmap is derived from chord_practice_sessions table in Supabase
+ * For drawing sessions, will be derived from drawing_practice_sessions table in future
+ * This localStorage counter is just for immediate UI feedback
  */
 export const incrementSession = (type: 'music' | 'drawing'): void => {
-  const today = getTodayInTimezone();
-
-  // 1. Write to localStorage (immediate, synchronous)
+  // Only write to localStorage (immediate, synchronous)
+  // No need to queue for Supabase - heatmap is derived from actual session tables
   incrementSessionLS(type);
-
-  // 2. Queue for Supabase sync (async, background)
-  // Dynamic import to avoid circular dependencies
-  if (typeof window !== 'undefined') {
-    import('@/app/services/supabaseSyncService').then(({ queueHabitSession }) => {
-      queueHabitSession(type, today);
-    });
-  }
 };
 
 export const getHabitStatus = (dayData: DayHabitData, settings: HabitSettings): 'none' | 'music' | 'drawing' | 'both' => {

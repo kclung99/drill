@@ -113,27 +113,8 @@ export const syncToSupabase = async (): Promise<SyncStatus> => {
   }
 
   try {
-    // Separate items by table
-    const habitItems = queue.filter((item) => item.table === 'habit_sessions');
+    // Only sync chord practice sessions (habit counts are derived from this table)
     const chordItems = queue.filter((item) => item.table === 'chord_practice_sessions');
-
-    // Sync habit sessions
-    if (habitItems.length > 0) {
-      const habitRows: HabitSessionRow[] = habitItems.map((item) => ({
-        user_id: user.id,
-        session_type: item.data.session_type,
-        session_date: item.data.session_date,
-      }));
-
-      const { error: habitError } = await supabase
-        .from('habit_sessions')
-        .insert(habitRows);
-
-      if (habitError) {
-        console.error('Error syncing habit sessions:', habitError);
-        throw habitError;
-      }
-    }
 
     // Sync chord practice sessions
     if (chordItems.length > 0) {
@@ -314,16 +295,7 @@ export const syncFromSupabase = async (): Promise<void> => {
   } = await import('./localStorageService');
 
   try {
-    // 1. Fetch habit sessions from Supabase
-    const { data: habitRows, error: habitError } = await supabase
-      .from('habit_sessions')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('session_date', { ascending: false });
-
-    if (habitError) throw habitError;
-
-    // 2. Fetch chord sessions from Supabase
+    // 1. Fetch chord practice sessions from Supabase
     const { data: chordRows, error: chordError } = await supabase
       .from('chord_practice_sessions')
       .select('*')
@@ -332,45 +304,35 @@ export const syncFromSupabase = async (): Promise<void> => {
 
     if (chordError) throw chordError;
 
-    // 3. Merge habit sessions into localStorage
-    if (habitRows && habitRows.length > 0) {
-      const habitData = getHabitData();
-      const dayMap = new Map<string, { musicSessions: number; drawingSessions: number }>();
+    // 2. Build heatmap from chord sessions (aggregate by date)
+    const habitData = getHabitData();
+    const dayMap = new Map<string, { musicSessions: number; drawingSessions: number }>();
 
-      // Start with existing localStorage data
-      habitData.days.forEach(day => {
-        dayMap.set(day.date, { musicSessions: day.musicSessions, drawingSessions: day.drawingSessions });
-      });
-
-      // Aggregate Supabase sessions by date
-      habitRows.forEach(row => {
-        const date = row.session_date;
+    // Aggregate chord sessions by date
+    if (chordRows && chordRows.length > 0) {
+      chordRows.forEach(row => {
+        // Extract date from created_at timestamp
+        const date = new Date(row.created_at).toISOString().split('T')[0];
         const existing = dayMap.get(date) || { musicSessions: 0, drawingSessions: 0 };
-
-        if (row.session_type === 'music') {
-          existing.musicSessions++;
-        } else {
-          existing.drawingSessions++;
-        }
-
+        existing.musicSessions++;
         dayMap.set(date, existing);
-      });
-
-      // Convert back to array
-      const mergedDays: DayHabitData[] = Array.from(dayMap.entries()).map(([date, counts]) => ({
-        date,
-        musicSessions: counts.musicSessions,
-        drawingSessions: counts.drawingSessions,
-      }));
-
-      // Save merged data
-      saveHabitData({
-        settings: habitData.settings,
-        days: mergedDays,
       });
     }
 
-    // 4. Merge chord sessions into localStorage
+    // Convert to array and save
+    const mergedDays: DayHabitData[] = Array.from(dayMap.entries()).map(([date, counts]) => ({
+      date,
+      musicSessions: counts.musicSessions,
+      drawingSessions: counts.drawingSessions,
+    }));
+
+    // Save merged heatmap data
+    saveHabitData({
+      settings: habitData.settings,
+      days: mergedDays,
+    });
+
+    // 3. Merge chord sessions into localStorage
     if (chordRows && chordRows.length > 0) {
       const { saveChordSession: saveToLS } = await import('./localStorageService');
       const existingSessions = getChordSessions();
