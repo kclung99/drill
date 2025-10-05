@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./contexts/AuthContext";
+import SyncProvider from "./components/SyncProvider";
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
@@ -24,7 +25,9 @@ export default function RootLayout({
         className={`${jetbrainsMono.variable} font-mono antialiased`}
       >
         <AuthProvider>
-          {children}
+          <SyncProvider>
+            {children}
+          </SyncProvider>
         </AuthProvider>
       </body>
     </html>

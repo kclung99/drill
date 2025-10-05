@@ -1,54 +1,30 @@
-export interface HabitSettings {
-  musicDailyTarget: number;
-  drawingDailyTarget: number;
-}
+/**
+ * Habit Tracker Utility
+ *
+ * Now uses the centralized localStorage service and queues
+ * habit sessions for Supabase sync when user is logged in.
+ */
 
-export interface DayHabitData {
-  date: string; // YYYY-MM-DD format
-  musicSessions: number;
-  drawingSessions: number;
-}
+import {
+  getHabitData,
+  saveHabitData,
+  getDayData,
+  incrementSession as incrementSessionLS,
+  HabitSettings,
+  DayHabitData,
+  HabitData,
+} from '@/app/services/localStorageService';
 
-export interface HabitData {
-  settings: HabitSettings;
-  days: DayHabitData[];
-}
+// Re-export types for backward compatibility
+export type { HabitSettings, DayHabitData, HabitData };
 
-const HABIT_STORAGE_KEY = 'drill-habit-data';
+// Re-export functions that don't need modification
+export { getHabitData, saveHabitData, getDayData };
+
+// Hardcoded settings (as per new design)
 const DEFAULT_SETTINGS: HabitSettings = {
   musicDailyTarget: 2,
-  drawingDailyTarget: 2
-};
-
-export const getHabitData = (): HabitData => {
-  if (typeof window === 'undefined') {
-    return { settings: DEFAULT_SETTINGS, days: [] };
-  }
-
-  try {
-    const stored = localStorage.getItem(HABIT_STORAGE_KEY);
-    if (stored) {
-      const data = JSON.parse(stored);
-      return {
-        settings: { ...DEFAULT_SETTINGS, ...data.settings },
-        days: data.days || []
-      };
-    }
-  } catch (error) {
-    console.error('Error loading habit data:', error);
-  }
-
-  return { settings: DEFAULT_SETTINGS, days: [] };
-};
-
-export const saveHabitData = (data: HabitData): void => {
-  if (typeof window === 'undefined') return;
-
-  try {
-    localStorage.setItem(HABIT_STORAGE_KEY, JSON.stringify(data));
-  } catch (error) {
-    console.error('Error saving habit data:', error);
-  }
+  drawingDailyTarget: 2,
 };
 
 export const updateHabitSettings = (settings: HabitSettings): void => {
@@ -64,37 +40,28 @@ const getTodayInTimezone = (): string => {
     timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
-    day: '2-digit'
+    day: '2-digit',
   });
   return formatter.format(now); // Returns YYYY-MM-DD
 };
 
+/**
+ * Increment session counter and queue for Supabase sync
+ * This is the main entry point for tracking sessions
+ */
 export const incrementSession = (type: 'music' | 'drawing'): void => {
-  const data = getHabitData();
   const today = getTodayInTimezone();
 
-  let dayData = data.days.find(d => d.date === today);
-  if (!dayData) {
-    dayData = { date: today, musicSessions: 0, drawingSessions: 0 };
-    data.days.push(dayData);
+  // 1. Write to localStorage (immediate, synchronous)
+  incrementSessionLS(type);
+
+  // 2. Queue for Supabase sync (async, background)
+  // Dynamic import to avoid circular dependencies
+  if (typeof window !== 'undefined') {
+    import('@/app/services/supabaseSyncService').then(({ queueHabitSession }) => {
+      queueHabitSession(type, today);
+    });
   }
-
-  if (type === 'music') {
-    dayData.musicSessions++;
-  } else {
-    dayData.drawingSessions++;
-  }
-
-  saveHabitData(data);
-};
-
-export const getDayData = (date: string): DayHabitData => {
-  const data = getHabitData();
-  return data.days.find(d => d.date === date) || {
-    date,
-    musicSessions: 0,
-    drawingSessions: 0
-  };
 };
 
 export const getHabitStatus = (dayData: DayHabitData, settings: HabitSettings): 'none' | 'music' | 'drawing' | 'both' => {

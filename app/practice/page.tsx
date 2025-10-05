@@ -99,8 +99,84 @@ export default function PracticeMode() {
   const endSession = () => {
     setIsSessionActive(false);
     setIsSessionComplete(true);
-    // Increment music session in habit tracker
+
+    // Calculate and save detailed session data
+    const metrics = calculateSessionMetrics(sessionResults, totalChordsAnswered);
+
+    // Save detailed session to localStorage and queue for Supabase
+    saveChordSessionData({
+      config: {
+        duration: sessionDuration,
+        mode: sessionConfig.mode,
+        chordTypes: sessionConfig.chordTypes,
+        scales: sessionConfig.scales,
+      },
+      metrics,
+      chordResults: sessionResults,
+    });
+
+    // Increment music session in habit tracker (also queues for Supabase)
     incrementSession('music');
+  };
+
+  // Helper function to calculate metrics
+  const calculateSessionMetrics = (
+    results: SessionResult[],
+    correctChords: number
+  ) => {
+    if (results.length === 0) {
+      return {
+        totalChords: 0,
+        totalAttempts: 0,
+        accuracy: 0,
+        avgTimePerChord: 0,
+        fastestTime: 0,
+        slowestTime: 0,
+      };
+    }
+
+    const totalAttempts = results.reduce((sum, r) => sum + r.attempts, 0);
+    const avgCorrectTime = correctChords > 0
+      ? results.filter(r => r.correctTime > 0).reduce((sum, r) => sum + r.correctTime, 0) / correctChords
+      : 0;
+    const correctTimes = results.filter(r => r.correctTime > 0).map(r => r.correctTime);
+
+    return {
+      totalChords: correctChords,
+      totalAttempts,
+      accuracy: correctChords > 0 ? (correctChords / totalAttempts) * 100 : 0,
+      avgTimePerChord: avgCorrectTime / 1000, // convert to seconds
+      fastestTime: correctTimes.length > 0 ? Math.min(...correctTimes) / 1000 : 0,
+      slowestTime: correctTimes.length > 0 ? Math.max(...correctTimes) / 1000 : 0,
+    };
+  };
+
+  // Helper function to save chord session
+  const saveChordSessionData = (sessionData: {
+    config: { duration: number; mode: 'chordTypes' | 'scales'; chordTypes: string[]; scales: string[] };
+    metrics: {
+      totalChords: number;
+      totalAttempts: number;
+      accuracy: number;
+      avgTimePerChord: number;
+      fastestTime: number;
+      slowestTime: number;
+    };
+    chordResults: SessionResult[];
+  }) => {
+    // Save to localStorage and queue for Supabase sync
+    import('@/app/services/localStorageService').then(({ saveChordSession }) => {
+      const session = saveChordSession({
+        config: sessionData.config,
+        metrics: sessionData.metrics,
+        chordResults: sessionData.chordResults,
+      });
+
+      // Queue for Supabase sync
+      import('@/app/services/supabaseSyncService').then(({ queueChordSession }) => {
+        queueChordSession(session);
+      });
+    });
   };
 
 

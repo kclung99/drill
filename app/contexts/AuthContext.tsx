@@ -20,8 +20,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(user);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const newUser = session?.user || null;
+      setUser(newUser);
+
+      // Migrate guest data on first sign-in
+      if (event === 'SIGNED_IN' && newUser) {
+        try {
+          const { migrateGuestData } = await import('@/app/services/supabaseSyncService');
+          const { isMigrated: checkMigrated } = await import('@/app/services/localStorageService');
+
+          if (!checkMigrated()) {
+            console.log('Migrating guest data to Supabase...');
+            await migrateGuestData();
+            console.log('Migration complete');
+          }
+        } catch (error) {
+          console.error('Failed to migrate guest data:', error);
+        }
+      }
     });
 
     return () => subscription.unsubscribe();

@@ -17,7 +17,7 @@ export type DrawingImage = {
   category: string;
   subject_type: string;
   clothing_state: string;
-  attributes: Record<string, any>;
+  attributes: Record<string, unknown>;
   base_image_id?: string;
   created_at: string;
   used_count: number;
