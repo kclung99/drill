@@ -259,7 +259,7 @@ export default function PracticeMode() {
             <div className="flex flex-col items-center gap-2">
               <div className="text-sm text-gray-500">duration</div>
               <div className="flex justify-center gap-2">
-                {[1, 3, 5, 10, 20].map(duration => (
+                {[0.17, 1, 3, 5, 10, 20].map(duration => (
                   <button
                     key={duration}
                     onClick={() => setSessionDuration(duration)}
@@ -269,7 +269,7 @@ export default function PracticeMode() {
                         : 'bg-white text-gray-600 hover:bg-gray-100'
                     }`}
                   >
-                    {duration}min
+                    {duration === 0.17 ? '10s' : `${duration}min`}
                   </button>
                 ))}
               </div>
