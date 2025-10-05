@@ -1,6 +1,7 @@
 'use client';
 
 import HabitTracker from "./components/HabitTracker";
+import RecentSessions from "./components/RecentSessions";
 import { NavBar } from "@/components/nav-bar";
 
 export default function Home() {
@@ -9,7 +10,10 @@ export default function Home() {
       <NavBar currentPage="home" showMidiStatus={false} />
 
       <main className="flex-1 flex items-center justify-center">
-        <HabitTracker />
+        <div className="flex flex-col items-center">
+          <HabitTracker />
+          <RecentSessions />
+        </div>
       </main>
     </div>
   );
