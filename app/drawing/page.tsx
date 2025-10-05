@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { ImagePoolService } from '../services/imagePoolService';
 import { DrawingImage } from '../lib/supabase';
 import { incrementSession } from '../utils/habitTracker';
-import { AuthGate } from '@/components/auth-gate';
-import Link from 'next/link';
+import { NavBar } from '@/components/nav-bar';
 
 export default function DrawingPractice() {
   const [images, setImages] = useState<DrawingImage[]>([]);
@@ -125,25 +124,9 @@ export default function DrawingPractice() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <nav className="p-8">
-        <div className="flex justify-center gap-4">
-          <Link href="/" className="text-blue-600 hover:underline font-medium">
-            home
-          </Link>
-          <Link href="/live" className="text-blue-600 hover:underline font-medium">
-            live
-          </Link>
-          <Link href="/practice" className="text-blue-600 hover:underline font-medium">
-            chord
-          </Link>
-          <Link href="/drawing" className="text-blue-600 font-medium underline">
-            reference
-          </Link>
-        </div>
-      </nav>
+      <NavBar currentPage="reference" />
 
-      <AuthGate>
-        {!isSessionActive ? (
+      {!isSessionActive ? (
         <div className="flex-1 p-8 flex flex-col items-center justify-center">
           <div className="max-w-2xl w-full space-y-8">
 
@@ -317,7 +300,6 @@ export default function DrawingPractice() {
 
         </div>
       )}
-      </AuthGate>
     </div>
   );
 }

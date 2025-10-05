@@ -1,13 +1,10 @@
 export class ReplicateService {
   async generateImage(prompt: string): Promise<string> {
     try {
-      const token = localStorage.getItem('auth_token');
-
       const response = await fetch('/api/generate-image', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ prompt }),
       });

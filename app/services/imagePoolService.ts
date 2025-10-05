@@ -73,6 +73,9 @@ export class ImagePoolService {
         // Determine actual gender for storage
         const actualGender = gender === 'both' ? (Math.random() > 0.5 ? 'male' : 'female') : gender;
 
+        // Get current user (null = public image)
+        const { data: { user } } = await supabase.auth.getUser();
+
         // Save metadata to database using new schema
         const { data, error } = await supabase
           .from('drawing_images')
@@ -87,7 +90,12 @@ export class ImagePoolService {
               body_type: bodyType,
               race: race,
               pose: pose
-            }
+            },
+            user_id: user?.id || null, // null = public for everyone
+            // Keep old columns for backward compatibility
+            body_type: bodyType,
+            race: race,
+            pose: pose
           })
           .select()
           .single();

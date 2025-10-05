@@ -5,7 +5,7 @@ import { useMidi } from '../hooks/useMidi';
 import Piano from '../components/Piano';
 import { detectChord, chordsMatch, getChordNotes, getChordMidiNotes, SessionConfig, CHORD_TYPES, SCALES, generateSessionChords } from '../utils/chordDetection';
 import { incrementSession } from '../utils/habitTracker';
-import Link from 'next/link';
+import { NavBar } from '@/components/nav-bar';
 
 interface SessionResult {
   chord: string;
@@ -194,13 +194,13 @@ export default function PracticeMode() {
 
   if (!isSupported) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">MIDI Not Supported</h1>
-          <p className="text-gray-600">Your browser doesn't support Web MIDI API.</p>
-          <Link href="/" className="mt-4 inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            Back to Home
-          </Link>
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <NavBar currentPage="chord" showMidiStatus={true} midiActive={activeMode === 'midi'} />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-red-600 mb-4">MIDI Not Supported</h1>
+            <p className="text-gray-600">Your browser doesn't support Web MIDI API.</p>
+          </div>
         </div>
       </div>
     );
@@ -210,33 +210,7 @@ export default function PracticeMode() {
   if (!isSessionActive && !isSessionComplete) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <nav className="p-8">
-          <div className="flex justify-between items-center">
-            <div className="flex-1" />
-            <div className="flex justify-center gap-4">
-              <Link href="/" className="text-blue-600 hover:underline font-medium">
-                home
-              </Link>
-              <Link href="/live" className="text-blue-600 hover:underline font-medium">
-                live
-              </Link>
-              <Link href="/practice" className="text-blue-600 font-medium underline">
-                chord
-              </Link>
-              <Link href="/drawing" className="text-blue-600 hover:underline font-medium">
-                reference
-              </Link>
-            </div>
-            <div className="flex-1 flex justify-end">
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${activeMode === 'midi' ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                <span className="text-sm text-gray-600">
-                  {activeMode === 'midi' ? 'midi' : 'keyboard'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </nav>
+        <NavBar currentPage="chord" showMidiStatus={true} midiActive={activeMode === 'midi'} />
 
         <div className="flex-1 p-8 flex flex-col items-center justify-center">
           <div className="max-w-2xl w-full space-y-8">
@@ -358,33 +332,7 @@ export default function PracticeMode() {
   if (isSessionComplete && sessionMetrics) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <nav className="p-8">
-          <div className="flex justify-between items-center">
-            <div className="flex-1" />
-            <div className="flex justify-center gap-4">
-              <Link href="/" className="text-blue-600 hover:underline font-medium">
-                home
-              </Link>
-              <Link href="/live" className="text-blue-600 hover:underline font-medium">
-                live
-              </Link>
-              <Link href="/practice" className="text-blue-600 font-medium underline">
-                chord
-              </Link>
-              <Link href="/drawing" className="text-blue-600 hover:underline font-medium">
-                reference
-              </Link>
-            </div>
-            <div className="flex-1 flex justify-end">
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${activeMode === 'midi' ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                <span className="text-sm text-gray-600">
-                  {activeMode === 'midi' ? 'midi' : 'keyboard'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </nav>
+        <NavBar currentPage="chord" showMidiStatus={true} midiActive={activeMode === 'midi'} />
 
         <div className="flex-1 p-8 flex flex-col items-center justify-center gap-8">
           <div className="text-4xl font-bold text-blue-600">
@@ -426,33 +374,7 @@ export default function PracticeMode() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <nav className="p-8">
-        <div className="flex justify-between items-center">
-          <div className="flex-1" />
-          <div className="flex justify-center gap-4">
-            <Link href="/" className="text-blue-600 hover:underline font-medium">
-              home
-            </Link>
-            <Link href="/live" className="text-blue-600 hover:underline font-medium">
-              live
-            </Link>
-            <Link href="/practice" className="text-blue-600 font-medium underline">
-              chord
-            </Link>
-            <Link href="/drawing" className="text-blue-600 hover:underline font-medium">
-              reference
-            </Link>
-          </div>
-          <div className="flex-1 flex justify-end">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${activeMode === 'midi' ? 'bg-green-500' : 'bg-yellow-500'}`} />
-              <span className="text-sm text-gray-600">
-                {activeMode === 'midi' ? 'midi' : 'keyboard'}
-              </span>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <NavBar currentPage="chord" showMidiStatus={true} midiActive={activeMode === 'midi'} />
 
       <div className="flex-1 p-8 flex flex-col items-center justify-center gap-8">
 
