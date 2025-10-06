@@ -370,30 +370,43 @@ export const syncFromSupabase = async (): Promise<void> => {
     if (drawingError) throw drawingError;
 
     // 2. Build heatmap from both tables (aggregate by date)
+    // Filter sessions based on validation thresholds
+    const { fetchSettings } = await import('@/app/services/settingsService');
+    const settings = await fetchSettings();
+
     const habitData = getHabitData();
     const dayMap = new Map<string, { musicSessions: number; drawingSessions: number }>();
 
-    // Aggregate chord sessions by date (music)
+    // Aggregate chord sessions by date (music) - only valid sessions
     if (chordRows && chordRows.length > 0) {
       const { formatDateInUserTimezone } = await import('@/app/utils/timezoneHelper');
       chordRows.forEach(row => {
-        // Convert UTC timestamp to date in user's timezone
-        const date = formatDateInUserTimezone(new Date(row.created_at));
-        const existing = dayMap.get(date) || { musicSessions: 0, drawingSessions: 0 };
-        existing.musicSessions++;
-        dayMap.set(date, existing);
+        // Only count if session meets minimum duration threshold
+        if (row.duration_minutes >= settings.minMusicDurationMinutes) {
+          // Convert UTC timestamp to date in user's timezone
+          const date = formatDateInUserTimezone(new Date(row.created_at));
+          const existing = dayMap.get(date) || { musicSessions: 0, drawingSessions: 0 };
+          existing.musicSessions++;
+          dayMap.set(date, existing);
+        }
       });
     }
 
-    // Aggregate drawing sessions by date (drawing)
+    // Aggregate drawing sessions by date (drawing) - only valid sessions
     if (drawingRows && drawingRows.length > 0) {
       const { formatDateInUserTimezone } = await import('@/app/utils/timezoneHelper');
       drawingRows.forEach(row => {
-        // Convert UTC timestamp to date in user's timezone
-        const date = formatDateInUserTimezone(new Date(row.created_at));
-        const existing = dayMap.get(date) || { musicSessions: 0, drawingSessions: 0 };
-        existing.drawingSessions++;
-        dayMap.set(date, existing);
+        // Only count if session meets minimum thresholds
+        const meetsRefThreshold = row.image_count >= settings.minDrawingRefs;
+        const meetsDurationThreshold = row.duration_seconds === null || row.duration_seconds >= settings.minDrawingDurationSeconds;
+
+        if (meetsRefThreshold && meetsDurationThreshold) {
+          // Convert UTC timestamp to date in user's timezone
+          const date = formatDateInUserTimezone(new Date(row.created_at));
+          const existing = dayMap.get(date) || { musicSessions: 0, drawingSessions: 0 };
+          existing.drawingSessions++;
+          dayMap.set(date, existing);
+        }
       });
     }
 

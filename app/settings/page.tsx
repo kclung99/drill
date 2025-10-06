@@ -51,12 +51,8 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <NavBar currentPage="settings" />
 
-      <main className="flex-1 p-8 flex flex-col items-center">
+      <main className="flex-1 p-8 flex items-center justify-center">
         <div className="w-full max-w-2xl space-y-8">
-          <div>
-            <h1 className="text-2xl font-normal mb-6">settings</h1>
-          </div>
-
           {/* Heatmap Targets */}
           <div className="space-y-4">
             <h2 className="text-sm text-gray-500">heatmap targets</h2>

@@ -86,7 +86,7 @@ export const saveSettingsToLocalStorage = (settings: UserSettings): void => {
 
 /**
  * Fetch user settings from Supabase
- * Creates default settings if they don't exist
+ * Returns defaults if settings don't exist (doesn't create them)
  */
 export const fetchSettings = async (): Promise<UserSettings> => {
   const { data: { user } } = await supabase.auth.getUser();
@@ -102,53 +102,35 @@ export const fetchSettings = async (): Promise<UserSettings> => {
       .from('user_settings')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // No settings found - create defaults
-        const defaultRow: Partial<UserSettingsRow> = {
-          user_id: user.id,
-          music_daily_target: DEFAULT_SETTINGS.musicDailyTarget,
-          drawing_daily_target: DEFAULT_SETTINGS.drawingDailyTarget,
-          min_music_duration_minutes: DEFAULT_SETTINGS.minMusicDurationMinutes,
-          min_drawing_refs: DEFAULT_SETTINGS.minDrawingRefs,
-          min_drawing_duration_seconds: DEFAULT_SETTINGS.minDrawingDurationSeconds,
-          timezone_offset: DEFAULT_SETTINGS.timezoneOffset,
-        };
+    if (error) throw error;
 
-        const { data: newData, error: insertError } = await supabase
-          .from('user_settings')
-          .insert(defaultRow)
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-
-        const settings = rowToSettings(newData);
-        saveSettingsToLocalStorage(settings);
-        return settings;
-      }
-      throw error;
+    if (data) {
+      // Settings exist - return them and cache to localStorage
+      const settings = rowToSettings(data);
+      saveSettingsToLocalStorage(settings);
+      return settings;
     }
 
-    const settings = rowToSettings(data);
-    saveSettingsToLocalStorage(settings);
-    return settings;
+    // No settings in DB - return defaults (don't insert yet)
+    return DEFAULT_SETTINGS;
   } catch (error) {
     console.error('Error fetching settings:', error);
+    // Fallback to localStorage or defaults
     return getSettingsFromLocalStorage();
   }
 };
 
 /**
  * Update user settings in Supabase and localStorage
+ * Uses upsert to insert if doesn't exist, update if it does
  */
 export const updateSettings = async (settings: Partial<UserSettings>): Promise<UserSettings> => {
   const { data: { user } } = await supabase.auth.getUser();
 
   // Get current settings
-  const current = getSettingsFromLocalStorage();
+  const current = await fetchSettings();
   const updated = { ...current, ...settings };
 
   // Always save to localStorage (immediate feedback)
@@ -160,8 +142,9 @@ export const updateSettings = async (settings: Partial<UserSettings>): Promise<U
   }
 
   try {
-    // Update in Supabase
+    // Upsert in Supabase (insert if doesn't exist, update if it does)
     const row: Partial<UserSettingsRow> = {
+      user_id: user.id,
       music_daily_target: updated.musicDailyTarget,
       drawing_daily_target: updated.drawingDailyTarget,
       min_music_duration_minutes: updated.minMusicDurationMinutes,
@@ -172,8 +155,7 @@ export const updateSettings = async (settings: Partial<UserSettings>): Promise<U
 
     const { error } = await supabase
       .from('user_settings')
-      .update(row)
-      .eq('user_id', user.id);
+      .upsert(row, { onConflict: 'user_id' });
 
     if (error) throw error;
 

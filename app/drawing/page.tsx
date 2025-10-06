@@ -5,6 +5,7 @@ import { ImagePoolService } from '../services/imagePoolService';
 import { DrawingImage } from '../lib/supabase';
 import { incrementSession } from '../utils/habitTracker';
 import { NavBar } from '@/components/nav-bar';
+import { UserSettings } from '@/app/services/settingsService';
 
 export default function DrawingPractice() {
   const [images, setImages] = useState<DrawingImage[]>([]);
@@ -17,6 +18,16 @@ export default function DrawingPractice() {
   const [alwaysGenerateNew, setAlwaysGenerateNew] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
+
+  // User settings for validation thresholds
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+
+  // Load user settings on mount
+  useEffect(() => {
+    import('@/app/services/settingsService').then(({ fetchSettings }) => {
+      fetchSettings().then(setUserSettings);
+    });
+  }, []);
 
   // New filter options
   const [category, setCategory] = useState<string>('full-body');
@@ -96,8 +107,8 @@ export default function DrawingPractice() {
         // Force generation of new images, skip pool
         sessionImages = await imagePoolService.generateImages(imageCount, category, gender, clothing);
       } else {
-        // Use normal pool logic
-        sessionImages = await imagePoolService.getImagesForSession(imageCount);
+        // Use normal pool logic with filters
+        sessionImages = await imagePoolService.getImagesForSession(imageCount, category, gender, clothing);
       }
 
       // Save session config
@@ -252,38 +263,52 @@ export default function DrawingPractice() {
             <div className="flex flex-col items-center gap-2">
               <div className="text-sm text-gray-500">count</div>
               <div className="flex justify-center gap-2">
-                {[1, 3, 10, 20, 30].map(count => (
-                  <button
-                    key={count}
-                    onClick={() => setImageCount(count)}
-                    className={`px-4 py-2 text-sm border border-gray-400 ${
-                      imageCount === count
-                        ? 'bg-black text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    {count}
-                  </button>
-                ))}
+                {[1, 3, 10, 20, 30].map(count => {
+                  const isValid = userSettings ? count >= userSettings.minDrawingRefs : true;
+                  return (
+                    <button
+                      key={count}
+                      onClick={() => setImageCount(count)}
+                      className={`px-4 py-2 text-sm border border-gray-400 ${
+                        imageCount === count
+                          ? isValid
+                            ? 'bg-black text-white'
+                            : 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-100'
+                      }`}
+                      title={!isValid ? "Won't count toward heatmap" : undefined}
+                    >
+                      {count}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <div className="flex flex-col items-center gap-2">
               <div className="text-sm text-gray-500">duration</div>
               <div className="flex justify-center gap-2">
-                {[30, 60, 90, 120, 'inf'].map(dur => (
-                  <button
-                    key={dur}
-                    onClick={() => setDuration(dur as number | 'inf')}
-                    className={`px-4 py-2 text-sm border border-gray-400 ${
-                      duration === dur
-                        ? 'bg-black text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    {dur === 'inf' ? 'inf' : `${dur}s`}
-                  </button>
-                ))}
+                {[30, 60, 90, 120, 'inf'].map(dur => {
+                  const isValid = userSettings
+                    ? (dur === 'inf' || dur >= userSettings.minDrawingDurationSeconds)
+                    : true;
+                  return (
+                    <button
+                      key={dur}
+                      onClick={() => setDuration(dur as number | 'inf')}
+                      className={`px-4 py-2 text-sm border border-gray-400 ${
+                        duration === dur
+                          ? isValid
+                            ? 'bg-black text-white'
+                            : 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-100'
+                      }`}
+                      title={!isValid ? "Won't count toward heatmap" : undefined}
+                    >
+                      {dur === 'inf' ? 'inf' : `${dur}s`}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

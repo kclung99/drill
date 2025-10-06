@@ -6,6 +6,7 @@ import Piano from '../components/Piano';
 import { detectChord, chordsMatch, getChordNotes, getChordMidiNotes, SessionConfig, CHORD_TYPES, SCALES, generateSessionChords } from '../utils/chordDetection';
 import { incrementSession } from '../utils/habitTracker';
 import { NavBar } from '@/components/nav-bar';
+import { UserSettings } from '@/app/services/settingsService';
 
 interface SessionResult {
   chord: string;
@@ -16,6 +17,16 @@ interface SessionResult {
 
 export default function PracticeMode() {
   const { pressedKeys, isSupported, activeMode } = useMidi();
+
+  // User settings for validation thresholds
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+
+  // Load user settings on mount
+  useEffect(() => {
+    import('@/app/services/settingsService').then(({ fetchSettings }) => {
+      fetchSettings().then(setUserSettings);
+    });
+  }, []);
 
   // Session configuration
   const [sessionConfig, setSessionConfig] = useState<SessionConfig>({
@@ -266,19 +277,24 @@ export default function PracticeMode() {
             <div className="flex flex-col items-center gap-2">
               <div className="text-sm text-gray-500">duration</div>
               <div className="flex justify-center gap-2">
-                {[0.17, 1, 3, 5, 10, 20].map(duration => (
-                  <button
-                    key={duration}
-                    onClick={() => setSessionDuration(duration)}
-                    className={`px-4 py-2 text-sm border border-gray-400 ${
-                      sessionDuration === duration
-                        ? 'bg-black text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    {duration === 0.17 ? '10s' : `${duration}min`}
+                {[0.17, 1, 3, 5, 10, 20].map(duration => {
+                  const isValid = userSettings ? duration >= userSettings.minMusicDurationMinutes : true;
+                  return (
+                    <button
+                      key={duration}
+                      onClick={() => setSessionDuration(duration)}
+                      className={`px-4 py-2 text-sm border border-gray-400 ${
+                        sessionDuration === duration
+                          ? isValid
+                            ? 'bg-black text-white'
+                            : 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-100'
+                      }`}
+                      title={!isValid ? "Won't count toward heatmap" : undefined}
+                    >
+                      {duration === 0.17 ? '10s' : `${duration}min`}
                   </button>
-                ))}
+                )})}
               </div>
             </div>
 

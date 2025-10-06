@@ -9,12 +9,27 @@ export class ImagePoolService {
     this.replicateService = new ReplicateService();
   }
 
-  async getImagesForSession(count: number): Promise<DrawingImage[]> {
+  async getImagesForSession(
+    count: number,
+    category: string = 'full-body',
+    gender: string = 'female',
+    clothing: string = 'minimal'
+  ): Promise<DrawingImage[]> {
     try {
-      // First, try to get images from the pool
-      const { data: availableImages, error } = await supabase
+      // Build query with filters
+      let query = supabase
         .from('drawing_images')
         .select('*')
+        .eq('category', category)
+        .eq('clothing_state', clothing);
+
+      // Filter by gender (handle 'both' case)
+      if (gender !== 'both') {
+        query = query.eq('subject_type', gender);
+      }
+
+      // Order by least used first
+      const { data: availableImages, error } = await query
         .order('used_count', { ascending: true })
         .order('created_at', { ascending: true })
         .limit(count);
@@ -28,9 +43,9 @@ export class ImagePoolService {
       // If we don't have enough images, generate more
       if (existingCount < count) {
         const needToGenerate = count - existingCount;
-        console.log(`Need to generate ${needToGenerate} more images`);
+        console.log(`Need to generate ${needToGenerate} more images for ${category}/${gender}/${clothing}`);
 
-        const newImages = await this.generateImages(needToGenerate);
+        const newImages = await this.generateImages(needToGenerate, category, gender, clothing);
 
         // Combine existing and new images
         return [...(availableImages || []), ...newImages];
