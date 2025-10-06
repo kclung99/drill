@@ -2,6 +2,7 @@
 
 import HabitTracker from "./components/HabitTracker";
 import RecentSessions from "./components/RecentSessions";
+import RecentDrawingSessions from "./components/RecentDrawingSessions";
 import { NavBar } from "@/components/nav-bar";
 
 export default function Home() {
@@ -13,6 +14,7 @@ export default function Home() {
         <div className="flex flex-col items-center">
           <HabitTracker />
           <RecentSessions />
+          <RecentDrawingSessions />
         </div>
       </main>
     </div>

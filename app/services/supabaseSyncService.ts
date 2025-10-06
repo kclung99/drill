@@ -375,8 +375,10 @@ export const syncFromSupabase = async (): Promise<void> => {
 
     // Aggregate chord sessions by date (music)
     if (chordRows && chordRows.length > 0) {
+      const { formatDateInUserTimezone } = await import('@/app/utils/timezoneHelper');
       chordRows.forEach(row => {
-        const date = new Date(row.created_at).toISOString().split('T')[0];
+        // Convert UTC timestamp to date in user's timezone
+        const date = formatDateInUserTimezone(new Date(row.created_at));
         const existing = dayMap.get(date) || { musicSessions: 0, drawingSessions: 0 };
         existing.musicSessions++;
         dayMap.set(date, existing);
@@ -385,8 +387,10 @@ export const syncFromSupabase = async (): Promise<void> => {
 
     // Aggregate drawing sessions by date (drawing)
     if (drawingRows && drawingRows.length > 0) {
+      const { formatDateInUserTimezone } = await import('@/app/utils/timezoneHelper');
       drawingRows.forEach(row => {
-        const date = new Date(row.created_at).toISOString().split('T')[0];
+        // Convert UTC timestamp to date in user's timezone
+        const date = formatDateInUserTimezone(new Date(row.created_at));
         const existing = dayMap.get(date) || { musicSessions: 0, drawingSessions: 0 };
         existing.drawingSessions++;
         dayMap.set(date, existing);

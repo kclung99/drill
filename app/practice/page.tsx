@@ -96,12 +96,19 @@ export default function PracticeMode() {
     startCurrentChord();
   };
 
-  const endSession = () => {
+  const endSession = async () => {
     setIsSessionActive(false);
     setIsSessionComplete(true);
     // Note: Session data will be saved in the effect below when isSessionComplete changes
-    // Increment music session in habit tracker (also queues for Supabase)
-    incrementSession('music');
+
+    // Check if session meets minimum duration threshold before counting it
+    const { fetchSettings } = await import('@/app/services/settingsService');
+    const settings = await fetchSettings();
+
+    if (sessionDuration >= settings.minMusicDurationMinutes) {
+      // Only increment heatmap if session is valid
+      incrementSession('music');
+    }
   };
 
   // Save session data when session completes

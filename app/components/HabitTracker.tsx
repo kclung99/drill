@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import {
   getHabitData,
   getDayData,
-  getHabitStatus,
   generateDatesForHeatmap,
   HabitData
 } from '../utils/habitTracker';
+import { fetchSettings, UserSettings } from '@/app/services/settingsService';
+import { getUserTimezone, getTodayInUserTimezone } from '@/app/utils/timezoneHelper';
 
 type FilterMode = 'combined' | 'music' | 'drawing';
 
@@ -16,18 +17,27 @@ export default function HabitTracker() {
     settings: { musicDailyTarget: 2, drawingDailyTarget: 2 },
     days: []
   });
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>('combined');
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
-    const data = getHabitData();
-    setHabitData(data);
+    const loadData = async () => {
+      const data = getHabitData();
+      setHabitData(data);
+
+      const settings = await fetchSettings();
+      setUserSettings(settings);
+    };
+    loadData();
   }, []);
 
   const getIntensityClass = (dayData: { date: string; musicSessions: number; drawingSessions: number }) => {
-    const musicComplete = dayData.musicSessions >= 2;
-    const drawingComplete = dayData.drawingSessions >= 2;
+    const musicTarget = userSettings?.musicDailyTarget || 2;
+    const drawingTarget = userSettings?.drawingDailyTarget || 2;
+    const musicComplete = dayData.musicSessions >= musicTarget;
+    const drawingComplete = dayData.drawingSessions >= drawingTarget;
 
     if (filterMode === 'music') {
       return musicComplete ? 'bg-blue-500' : 'bg-gray-100';
@@ -46,9 +56,15 @@ export default function HabitTracker() {
 
   // Only calculate these on client to avoid hydration mismatch
   const dates = isClient ? generateDatesForHeatmap() : [];
-  const today = isClient ? new Date().toISOString().split('T')[0] : '';
+  const today = isClient ? getTodayInUserTimezone() : '';
   const todayData = isClient ? getDayData(today) : { date: '', musicSessions: 0, drawingSessions: 0 };
-  const currentYear = isClient ? new Date().getFullYear() : 2025;
+  const currentYear = isClient ? (() => {
+    const timezone = getUserTimezone();
+    return parseInt(new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+    }).format(new Date()));
+  })() : 2025;
 
   // Organize dates into weeks (columns)
   const weeks: string[][] = [];
@@ -101,13 +117,13 @@ export default function HabitTracker() {
           <div>
             <span className="font-medium text-black">music:</span>
             <span className="text-gray-500 ml-1">
-              {todayData.musicSessions}/2
+              {todayData.musicSessions}/{userSettings?.musicDailyTarget || 2}
             </span>
           </div>
           <div>
             <span className="font-medium text-black">drawing:</span>
             <span className="text-gray-500 ml-1">
-              {todayData.drawingSessions}/2
+              {todayData.drawingSessions}/{userSettings?.drawingDailyTarget || 2}
             </span>
           </div>
         </div>

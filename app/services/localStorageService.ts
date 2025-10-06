@@ -134,15 +134,31 @@ export const saveHabitData = (data: HabitData): void => {
 };
 
 const getTodayInTimezone = (): string => {
-  const timezone = process.env.NEXT_PUBLIC_TIMEZONE || 'America/Chicago';
-  const now = new Date();
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  return formatter.format(now); // Returns YYYY-MM-DD
+  if (typeof window !== 'undefined') {
+    try {
+      // Use inline implementation to avoid circular dependencies
+      const stored = localStorage.getItem('drill-user-settings');
+      const settings = stored ? JSON.parse(stored) : { timezoneOffset: -6 };
+      const offsetMap: Record<number, string> = {
+        '-6': 'America/Chicago',
+        '-5': 'America/New_York',
+        '-8': 'America/Los_Angeles',
+        // Add more as needed
+      };
+      const timezone = offsetMap[settings.timezoneOffset] || 'America/Chicago';
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      return formatter.format(now);
+    } catch {
+      return new Date().toISOString().split('T')[0];
+    }
+  }
+  return new Date().toISOString().split('T')[0];
 };
 
 export const incrementSession = (type: 'music' | 'drawing'): void => {

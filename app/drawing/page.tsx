@@ -124,13 +124,23 @@ export default function DrawingPractice() {
     }
   };
 
-  const stopSession = () => {
+  const stopSession = async () => {
     setIsSessionActive(false);
     setIsSessionComplete(true);
     setTimeRemaining(0);
     setIsPaused(false);
-    // Increment drawing session in habit tracker (localStorage)
-    incrementSession('drawing');
+
+    // Check if session meets minimum thresholds before counting it
+    const { fetchSettings } = await import('@/app/services/settingsService');
+    const settings = await fetchSettings();
+
+    const meetsRefThreshold = imageCount >= settings.minDrawingRefs;
+    const meetsDurationThreshold = duration === 'inf' || duration >= settings.minDrawingDurationSeconds;
+
+    if (meetsRefThreshold && meetsDurationThreshold) {
+      // Only increment heatmap if session is valid
+      incrementSession('drawing');
+    }
   };
 
   // Save session data when session completes

@@ -14,6 +14,7 @@ import {
   DayHabitData,
   HabitData,
 } from '@/app/services/localStorageService';
+import { getUserTimezone, formatDateInUserTimezone, getTodayInUserTimezone } from '@/app/utils/timezoneHelper';
 
 // Re-export types for backward compatibility
 export type { HabitSettings, DayHabitData, HabitData };
@@ -31,18 +32,6 @@ export const updateHabitSettings = (settings: HabitSettings): void => {
   const data = getHabitData();
   data.settings = settings;
   saveHabitData(data);
-};
-
-const getTodayInTimezone = (): string => {
-  const timezone = process.env.NEXT_PUBLIC_TIMEZONE || 'America/Chicago';
-  const now = new Date();
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  return formatter.format(now); // Returns YYYY-MM-DD
 };
 
 /**
@@ -68,9 +57,15 @@ export const getHabitStatus = (dayData: DayHabitData, settings: HabitSettings): 
 };
 
 export const generateDatesForHeatmap = (): string[] => {
+  const timezone = getUserTimezone();
   const dates: string[] = [];
-  const today = new Date();
-  const currentYear = today.getFullYear();
+
+  // Get current year in the configured timezone
+  const now = new Date();
+  const currentYear = parseInt(new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+  }).format(now));
 
   // Start from January 1st of current year
   const startDate = new Date(currentYear, 0, 1);
@@ -84,7 +79,9 @@ export const generateDatesForHeatmap = (): string[] => {
   for (let i = 0; i < 53 * 7; i++) {
     const date = new Date(adjustedStart);
     date.setDate(adjustedStart.getDate() + i);
-    dates.push(date.toISOString().split('T')[0]);
+    // Format date in the configured timezone
+    const dateStr = formatDateInUserTimezone(date);
+    dates.push(dateStr);
   }
 
   return dates;

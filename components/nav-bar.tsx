@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/app/contexts/AuthContext';
 
 interface NavBarProps {
-  currentPage: 'home' | 'live' | 'chord' | 'reference';
+  currentPage: 'home' | 'live' | 'chord' | 'reference' | 'settings';
   showMidiStatus?: boolean;
   midiActive?: boolean;
 }
@@ -49,6 +49,12 @@ export function NavBar({ currentPage, showMidiStatus = false, midiActive = false
             className={`text-blue-600 font-medium ${currentPage === 'reference' ? 'underline' : 'hover:underline'}`}
           >
             reference
+          </Link>
+          <Link
+            href="/settings"
+            className={`text-blue-600 font-medium ${currentPage === 'settings' ? 'underline' : 'hover:underline'}`}
+          >
+            settings
           </Link>
         </div>
         <div className="flex-1 flex justify-end items-center gap-2">
