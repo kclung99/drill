@@ -11,6 +11,7 @@ export default function DrawingPractice() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [duration, setDuration] = useState<number | 'inf'>(60);
   const [isSessionActive, setIsSessionActive] = useState(false);
+  const [isSessionComplete, setIsSessionComplete] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [alwaysGenerateNew, setAlwaysGenerateNew] = useState(false);
@@ -22,6 +23,17 @@ export default function DrawingPractice() {
   const [gender, setGender] = useState<string>('female');
   const [clothing, setClothing] = useState<string>('minimal');
   const [imageCount, setImageCount] = useState(1);
+
+  // Session tracking
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [sessionConfig, setSessionConfig] = useState<{
+    duration: number | 'inf';
+    imageCount: number;
+    category: string;
+    gender: string;
+    clothing: string;
+    alwaysGenerateNew: boolean;
+  } | null>(null);
 
   const imagePoolService = new ImagePoolService();
 
@@ -88,10 +100,22 @@ export default function DrawingPractice() {
         sessionImages = await imagePoolService.getImagesForSession(imageCount);
       }
 
+      // Save session config
+      setSessionConfig({
+        duration,
+        imageCount,
+        category,
+        gender,
+        clothing,
+        alwaysGenerateNew,
+      });
+
       setImages(sessionImages);
       setCurrentImageIndex(0);
       setTimeRemaining(duration === 'inf' ? 0 : duration);
+      setSessionStartTime(Date.now());
       setIsSessionActive(true);
+      setIsSessionComplete(false);
     } catch (error) {
       console.error('Failed to start session:', error);
       alert('Failed to start session. Please check your configuration.');
@@ -102,11 +126,37 @@ export default function DrawingPractice() {
 
   const stopSession = () => {
     setIsSessionActive(false);
+    setIsSessionComplete(true);
     setTimeRemaining(0);
     setIsPaused(false);
-    // Increment drawing session in habit tracker
+    // Increment drawing session in habit tracker (localStorage)
     incrementSession('drawing');
   };
+
+  // Save session data when session completes
+  useEffect(() => {
+    if (isSessionComplete && sessionConfig && sessionStartTime) {
+      const totalTimeSeconds = duration !== 'inf'
+        ? Math.floor((Date.now() - sessionStartTime) / 1000)
+        : null;
+
+      // Save to localStorage and queue for Supabase sync
+      import('@/app/services/localStorageService').then(({ saveDrawingSession }) => {
+        const session = saveDrawingSession({
+          config: sessionConfig,
+          results: {
+            imagesCompleted: currentImageIndex + 1, // +1 because index is 0-based
+            totalTimeSeconds,
+          },
+        });
+
+        // Queue for Supabase sync
+        import('@/app/services/supabaseSyncService').then(({ queueDrawingSession }) => {
+          queueDrawingSession(session);
+        });
+      });
+    }
+  }, [isSessionComplete, sessionConfig, sessionStartTime, currentImageIndex, duration]);
 
   const togglePause = () => {
     setIsPaused(prev => !prev);

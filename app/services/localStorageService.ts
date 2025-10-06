@@ -9,6 +9,7 @@
 const KEYS = {
   HABIT_DATA: 'drill-habit-data',
   CHORD_SESSIONS: 'drill-chord-sessions',
+  DRAWING_SESSIONS: 'drill-drawing-sessions',
   SYNC_QUEUE: 'drill-sync-queue',
   MIGRATED: 'drill-migrated',
 } as const;
@@ -64,9 +65,30 @@ export interface ChordSession {
   timestamp: number; // Unix timestamp
 }
 
+export interface DrawingSessionConfig {
+  duration: number | 'inf'; // seconds per image (or infinite)
+  imageCount: number;
+  category: string;
+  gender: string;
+  clothing: string;
+  alwaysGenerateNew: boolean;
+}
+
+export interface DrawingSessionResults {
+  imagesCompleted: number;
+  totalTimeSeconds: number | null;
+}
+
+export interface DrawingSession {
+  id: string;
+  config: DrawingSessionConfig;
+  results: DrawingSessionResults;
+  timestamp: number; // Unix timestamp
+}
+
 export interface SyncQueueItem {
   id: string;
-  table: 'habit_sessions' | 'chord_practice_sessions';
+  table: 'chord_practice_sessions' | 'drawing_practice_sessions';
   data: Record<string, unknown>;
   timestamp: number;
 }
@@ -194,6 +216,49 @@ export const saveChordSession = (session: Omit<ChordSession, 'id' | 'timestamp'>
 export const clearChordSessions = (): void => {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(KEYS.CHORD_SESSIONS);
+};
+
+// ============================================================================
+// Drawing Session Functions
+// ============================================================================
+
+export const getDrawingSessions = (): DrawingSession[] => {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const stored = localStorage.getItem(KEYS.DRAWING_SESSIONS);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading drawing sessions:', error);
+  }
+
+  return [];
+};
+
+export const saveDrawingSession = (session: Omit<DrawingSession, 'id' | 'timestamp'>): DrawingSession => {
+  const newSession: DrawingSession = {
+    id: generateId(),
+    ...session,
+    timestamp: Date.now(),
+  };
+
+  const sessions = getDrawingSessions();
+  sessions.push(newSession);
+
+  try {
+    localStorage.setItem(KEYS.DRAWING_SESSIONS, JSON.stringify(sessions));
+  } catch (error) {
+    console.error('Error saving drawing session:', error);
+  }
+
+  return newSession;
+};
+
+export const clearDrawingSessions = (): void => {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(KEYS.DRAWING_SESSIONS);
 };
 
 // ============================================================================

@@ -10,6 +10,7 @@ import {
   getSyncQueue,
   clearSyncQueue,
   ChordSession,
+  DrawingSession,
 } from './localStorageService';
 
 // ============================================================================
@@ -35,6 +36,18 @@ interface ChordPracticeSessionRow {
   fastest_time: number;
   slowest_time: number;
   chord_results: Record<string, unknown>[];
+}
+
+interface DrawingPracticeSessionRow {
+  user_id: string;
+  duration_seconds: number | null;
+  image_count: number;
+  category: string;
+  gender: string;
+  clothing: string;
+  always_generate_new: boolean;
+  images_completed: number;
+  total_time_seconds: number | null;
 }
 
 export interface SyncStatus {
@@ -79,6 +92,23 @@ export const queueChordSession = async (session: ChordSession): Promise<void> =>
   });
 };
 
+/**
+ * Add a drawing practice session to the sync queue
+ */
+export const queueDrawingSession = async (session: DrawingSession): Promise<void> => {
+  const { addToSyncQueue } = await import('./localStorageService');
+  addToSyncQueue('drawing_practice_sessions', {
+    duration_seconds: session.config.duration === 'inf' ? null : session.config.duration,
+    image_count: session.config.imageCount,
+    category: session.config.category,
+    gender: session.config.gender,
+    clothing: session.config.clothing,
+    always_generate_new: session.config.alwaysGenerateNew,
+    images_completed: session.results.imagesCompleted,
+    total_time_seconds: session.results.totalTimeSeconds,
+  });
+};
+
 // ============================================================================
 // Sync Functions
 // ============================================================================
@@ -113,24 +143,25 @@ export const syncToSupabase = async (): Promise<SyncStatus> => {
   }
 
   try {
-    // Only sync chord practice sessions (habit counts are derived from this table)
+    // Separate items by table
     const chordItems = queue.filter((item) => item.table === 'chord_practice_sessions');
+    const drawingItems = queue.filter((item) => item.table === 'drawing_practice_sessions');
 
     // Sync chord practice sessions
     if (chordItems.length > 0) {
       const chordRows: ChordPracticeSessionRow[] = chordItems.map((item) => ({
         user_id: user.id,
-        duration_minutes: item.data.duration_minutes,
-        mode: item.data.mode,
-        chord_types: item.data.chord_types,
-        scales: item.data.scales,
-        total_chords: item.data.total_chords,
-        total_attempts: item.data.total_attempts,
-        accuracy: item.data.accuracy,
-        avg_time_per_chord: item.data.avg_time_per_chord,
-        fastest_time: item.data.fastest_time,
-        slowest_time: item.data.slowest_time,
-        chord_results: item.data.chord_results,
+        duration_minutes: item.data.duration_minutes as number,
+        mode: item.data.mode as 'chordTypes' | 'scales',
+        chord_types: item.data.chord_types as string[] | null,
+        scales: item.data.scales as string[] | null,
+        total_chords: item.data.total_chords as number,
+        total_attempts: item.data.total_attempts as number,
+        accuracy: item.data.accuracy as number,
+        avg_time_per_chord: item.data.avg_time_per_chord as number,
+        fastest_time: item.data.fastest_time as number,
+        slowest_time: item.data.slowest_time as number,
+        chord_results: item.data.chord_results as Record<string, unknown>[],
       }));
 
       const { error: chordError } = await supabase
@@ -140,6 +171,30 @@ export const syncToSupabase = async (): Promise<SyncStatus> => {
       if (chordError) {
         console.error('Error syncing chord sessions:', chordError);
         throw chordError;
+      }
+    }
+
+    // Sync drawing practice sessions
+    if (drawingItems.length > 0) {
+      const drawingRows: DrawingPracticeSessionRow[] = drawingItems.map((item) => ({
+        user_id: user.id,
+        duration_seconds: item.data.duration_seconds as number | null,
+        image_count: item.data.image_count as number,
+        category: item.data.category as string,
+        gender: item.data.gender as string,
+        clothing: item.data.clothing as string,
+        always_generate_new: item.data.always_generate_new as boolean,
+        images_completed: item.data.images_completed as number,
+        total_time_seconds: item.data.total_time_seconds as number | null,
+      }));
+
+      const { error: drawingError } = await supabase
+        .from('drawing_practice_sessions')
+        .insert(drawingRows);
+
+      if (drawingError) {
+        console.error('Error syncing drawing sessions:', drawingError);
+        throw drawingError;
       }
     }
 
@@ -290,31 +345,50 @@ export const syncFromSupabase = async (): Promise<void> => {
     getHabitData,
     saveHabitData,
     getChordSessions,
+    getDrawingSessions,
     DayHabitData,
-    ChordSession
+    ChordSession,
+    DrawingSession
   } = await import('./localStorageService');
 
   try {
-    // 1. Fetch chord practice sessions from Supabase
+    // 1. Fetch both chord and drawing practice sessions from Supabase
     const { data: chordRows, error: chordError } = await supabase
       .from('chord_practice_sessions')
       .select('*')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false});
 
     if (chordError) throw chordError;
 
-    // 2. Build heatmap from chord sessions (aggregate by date)
+    const { data: drawingRows, error: drawingError } = await supabase
+      .from('drawing_practice_sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (drawingError) throw drawingError;
+
+    // 2. Build heatmap from both tables (aggregate by date)
     const habitData = getHabitData();
     const dayMap = new Map<string, { musicSessions: number; drawingSessions: number }>();
 
-    // Aggregate chord sessions by date
+    // Aggregate chord sessions by date (music)
     if (chordRows && chordRows.length > 0) {
       chordRows.forEach(row => {
-        // Extract date from created_at timestamp
         const date = new Date(row.created_at).toISOString().split('T')[0];
         const existing = dayMap.get(date) || { musicSessions: 0, drawingSessions: 0 };
         existing.musicSessions++;
+        dayMap.set(date, existing);
+      });
+    }
+
+    // Aggregate drawing sessions by date (drawing)
+    if (drawingRows && drawingRows.length > 0) {
+      drawingRows.forEach(row => {
+        const date = new Date(row.created_at).toISOString().split('T')[0];
+        const existing = dayMap.get(date) || { musicSessions: 0, drawingSessions: 0 };
+        existing.drawingSessions++;
         dayMap.set(date, existing);
       });
     }
@@ -334,17 +408,15 @@ export const syncFromSupabase = async (): Promise<void> => {
 
     // 3. Merge chord sessions into localStorage
     if (chordRows && chordRows.length > 0) {
-      const { saveChordSession: saveToLS } = await import('./localStorageService');
       const existingSessions = getChordSessions();
       const existingIds = new Set(existingSessions.map(s => s.id));
 
-      // Only add sessions that don't exist locally (avoid duplicates)
       chordRows.forEach(row => {
-        // Use created_at timestamp as ID for Supabase sessions
-        const sessionId = `supabase-${row.id}`;
+        const sessionId = `supabase-chord-${row.id}`;
 
         if (!existingIds.has(sessionId)) {
-          const session: Omit<ChordSession, 'id' | 'timestamp'> = {
+          const localSession: ChordSession = {
+            id: sessionId,
             config: {
               duration: row.duration_minutes,
               mode: row.mode as 'chordTypes' | 'scales',
@@ -360,21 +432,47 @@ export const syncFromSupabase = async (): Promise<void> => {
               slowestTime: parseFloat(row.slowest_time?.toString() || '0'),
             },
             chordResults: (row.chord_results as unknown[]) || [],
-          };
-
-          // Save with custom ID and timestamp from Supabase
-          const localSession = {
-            ...session,
-            id: sessionId,
             timestamp: new Date(row.created_at).getTime(),
           };
 
-          // Manually add to localStorage without using saveChordSession (to preserve ID)
-          const sessions = getChordSessions();
-          sessions.push(localSession);
-          localStorage.setItem('drill-chord-sessions', JSON.stringify(sessions));
+          existingSessions.push(localSession);
         }
       });
+
+      localStorage.setItem('drill-chord-sessions', JSON.stringify(existingSessions));
+    }
+
+    // 4. Merge drawing sessions into localStorage
+    if (drawingRows && drawingRows.length > 0) {
+      const existingSessions = getDrawingSessions();
+      const existingIds = new Set(existingSessions.map(s => s.id));
+
+      drawingRows.forEach(row => {
+        const sessionId = `supabase-drawing-${row.id}`;
+
+        if (!existingIds.has(sessionId)) {
+          const localSession: DrawingSession = {
+            id: sessionId,
+            config: {
+              duration: row.duration_seconds === null ? 'inf' : row.duration_seconds,
+              imageCount: row.image_count,
+              category: row.category || '',
+              gender: row.gender || '',
+              clothing: row.clothing || '',
+              alwaysGenerateNew: row.always_generate_new || false,
+            },
+            results: {
+              imagesCompleted: row.images_completed,
+              totalTimeSeconds: row.total_time_seconds,
+            },
+            timestamp: new Date(row.created_at).getTime(),
+          };
+
+          existingSessions.push(localSession);
+        }
+      });
+
+      localStorage.setItem('drill-drawing-sessions', JSON.stringify(existingSessions));
     }
 
     console.log('Sync from Supabase completed');
