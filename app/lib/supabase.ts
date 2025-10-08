@@ -19,6 +19,8 @@ export type DrawingImage = {
   clothing_state: string;
   attributes: Record<string, unknown>;
   base_image_id?: string;
+  model: string;
+  generation_type: 'text-to-image' | 'image-to-image';
   created_at: string;
   used_count: number;
   last_used_at?: string;

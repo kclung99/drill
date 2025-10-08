@@ -133,37 +133,41 @@ export const generateDrawingPrompt = (
   race: string;
   pose: string;
 } => {
-  const bodyType = BODY_TYPES[Math.floor(Math.random() * BODY_TYPES.length)];
-  const race = RACES[Math.floor(Math.random() * RACES.length)];
-  const pose = POSES[Math.floor(Math.random() * POSES.length)];
-
   // For 'both' gender, randomly pick male or female
   const actualGender = gender === 'both'
     ? (Math.random() > 0.5 ? 'male' : 'female')
     : gender;
 
   let prompt = '';
+  let bodyType = '';
+  let race = '';
+  let pose = '';
 
   switch (category) {
     case 'full-body':
       // Full body uses complete attributes: body type, race, gender, clothing, pose
-      prompt = `A full body image from head to toe of a ${bodyType} ${race} ${actualGender} in white bikini ${pose}. The background should be neutral grey with soft spotlight`;
+      bodyType = BODY_TYPES[Math.floor(Math.random() * BODY_TYPES.length)];
+      race = RACES[Math.floor(Math.random() * RACES.length)];
+      pose = POSES[Math.floor(Math.random() * POSES.length)];
+      const clothingItem = actualGender === 'male' ? 'white athletic underwear' : 'white bikini';
+      prompt = `A full body image from head to toe of a ${bodyType} ${race} ${actualGender} wearing ${clothingItem} ${pose}. The background should be neutral grey with soft spotlight`;
       break;
 
     case 'hands':
-      // Hands: pick specific gesture deterministically
-      const handGesture = HAND_GESTURES[Math.floor(Math.random() * HAND_GESTURES.length)];
-      prompt = `A detailed close-up photograph of ${actualGender} hands showing ${handGesture}. Neutral grey background with soft lighting`;
+      // Hands: pick specific gesture - store in pose field
+      pose = HAND_GESTURES[Math.floor(Math.random() * HAND_GESTURES.length)];
+      prompt = `A detailed close-up photograph of natural ${actualGender} hands with short nails, no jewelry, showing ${pose}. Neutral grey background with soft lighting`;
       break;
 
     case 'feet':
-      // Feet: pick specific angle deterministically
-      const footAngle = FOOT_ANGLES[Math.floor(Math.random() * FOOT_ANGLES.length)];
-      prompt = `A detailed close-up photograph of ${actualGender} feet, ${footAngle}. Neutral grey background with soft lighting`;
+      // Feet: pick specific angle - store in pose field
+      pose = FOOT_ANGLES[Math.floor(Math.random() * FOOT_ANGLES.length)];
+      prompt = `A detailed close-up photograph of natural ${actualGender} feet with short nails, no jewelry, ${pose}. Neutral grey background with soft lighting`;
       break;
 
     case 'portraits':
       // Portraits: focus on face and upper body, include race for diversity
+      race = RACES[Math.floor(Math.random() * RACES.length)];
       prompt = `A portrait photograph of a ${race} ${actualGender} showing head and shoulders. Neutral grey background with soft lighting`;
       break;
   }

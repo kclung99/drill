@@ -20,32 +20,21 @@ export default function RecentDrawingSessions() {
     return null;
   }
 
-  const formatTimestamp = (timestamp: number) => {
+  const formatDateTime = (timestamp: number) => {
     const timezone = getUserTimezone();
     const date = new Date(timestamp);
-
-    // Get today's date in the user's timezone
-    const todayInTZ = getTodayInUserTimezone();
-    const sessionDateInTZ = formatDateInUserTimezone(date);
-
-    const isToday = todayInTZ === sessionDateInTZ;
-
-    if (isToday) {
-      return date.toLocaleTimeString('en-US', {
-        timeZone: timezone,
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      });
-    }
-
-    return date.toLocaleDateString('en-US', {
+    const dateStr = date.toLocaleDateString('en-US', {
       timeZone: timezone,
       month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
+      day: 'numeric'
     });
+    const timeStr = date.toLocaleTimeString('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    return `${dateStr} ${timeStr}`;
   };
 
   const formatDuration = (duration: number | 'inf') => {
@@ -69,7 +58,7 @@ export default function RecentDrawingSessions() {
         <tbody>
           {sessions.map((session) => (
             <tr key={session.id} className="border-b border-gray-200">
-              <td className="py-2 text-gray-600">{formatTimestamp(session.timestamp)}</td>
+              <td className="py-2 text-gray-600">{formatDateTime(session.timestamp)}</td>
               <td className="py-2 text-gray-600">{session.config.category}</td>
               <td className="py-2 text-gray-600">{formatDuration(session.config.duration)}</td>
               <td className="py-2 text-gray-600">{session.config.imageCount}</td>
