@@ -1,4 +1,4 @@
-export type ImageModel = 'ideogram-ai/ideogram-v3-turbo' | 'gemini-2.5-flash-image';
+export type ImageModel = 'ideogram-ai/ideogram-v3-turbo' | 'gemini-2.5-flash-image' | 'google/nano-banana';
 export type GenerationType = 'text-to-image' | 'image-to-image';
 
 export interface GenerateImageOptions {
@@ -27,9 +27,11 @@ export class ImageGenerationService {
       if (options.baseImage) {
         throw new Error('Ideogram does not support image-to-image generation');
       }
-      imageUrl = await this.generateWithReplicate(options.prompt);
+      imageUrl = await this.generateWithIdeogram(options.prompt);
     } else if (model === 'gemini-2.5-flash-image') {
       imageUrl = await this.generateWithGemini(options.prompt, options.baseImage);
+    } else if (model === 'google/nano-banana') {
+      imageUrl = await this.generateWithNanoBanana(options.prompt, options.baseImage);
     } else {
       throw new Error(`Unsupported model: ${model}`);
     }
@@ -41,7 +43,7 @@ export class ImageGenerationService {
     };
   }
 
-  private async generateWithReplicate(prompt: string): Promise<string> {
+  private async generateWithIdeogram(prompt: string): Promise<string> {
     try {
       const response = await fetch('/api/generate-image', {
         method: 'POST',
@@ -53,15 +55,33 @@ export class ImageGenerationService {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to generate image with Replicate');
+        throw new Error(error.error || 'Failed to generate image with Ideogram');
       }
 
       const { imageUrl } = await response.json();
       return imageUrl;
     } catch (error) {
-      console.error('Failed to generate image with Replicate:', error);
+      console.error('Failed to generate image with Ideogram:', error);
       throw error;
     }
+  }
+
+  private async generateWithNanoBanana(prompt: string, baseImage?: string): Promise<string> {
+    const response = await fetch('/api/generate-image-nano-banana', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ prompt, baseImage }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to generate image with Nano Banana');
+    }
+
+    const { imageUrl } = await response.json();
+    return imageUrl;
   }
 
   private async generateWithGemini(prompt: string, baseImage?: string): Promise<string> {

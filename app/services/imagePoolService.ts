@@ -4,7 +4,7 @@ import { generateDrawingPrompt } from '../utils/promptGenerator';
 
 export class ImagePoolService {
   private imageGenerationService: ImageGenerationService;
-  private defaultModel: ImageModel = 'gemini-2.5-flash-image';
+  private defaultModel: ImageModel = 'google/nano-banana';
 
   constructor(defaultModel?: ImageModel) {
     this.imageGenerationService = new ImageGenerationService();
@@ -54,21 +54,18 @@ export class ImagePoolService {
 
       const existingCount = availableImages?.length || 0;
 
-      // If we don't have enough images at all, generate more
+      // If we don't have enough images, log warning and return what we have
       if (existingCount < count) {
-        const needToGenerate = count - existingCount;
-        console.log(`Need to generate ${needToGenerate} more images for ${category}/${gender}/${clothing}`);
+        console.warn(`⚠️  Not enough images: requested ${count}, found ${existingCount} for ${category}/${gender}/${clothing}`);
 
-        const newImages = await this.generateImages(needToGenerate, category, gender, clothing);
+        if (existingCount === 0) {
+          throw new Error(`No images available for ${category}/${gender}/${clothing}. Please generate some in the admin panel.`);
+        }
 
-        // Combine existing and new images
-        const combined = [...(availableImages || []), ...newImages];
-
-        // Mark selected images as used
-        const imageIds = combined.map(img => img.id);
+        // Return what we have
+        const imageIds = availableImages.map(img => img.id);
         await this.markImagesAsUsed(imageIds);
-
-        return combined;
+        return availableImages;
       }
 
       // Randomly select from the pool of least-used images
@@ -270,7 +267,7 @@ export class ImagePoolService {
     }
   }
 
-  async generateFromPose(poseImageDataUrl: string, maxRetries: number = 2): Promise<DrawingImage> {
+  async generateFromPose(poseImageDataUrl: string, maxRetries: number = 0): Promise<DrawingImage> {
     console.log('🎭 Extracting pose and generating new image...');
 
     const base64Image = poseImageDataUrl.split(',')[1];
@@ -289,10 +286,10 @@ export class ImagePoolService {
         // Generate random attributes for metadata storage only
         const { bodyType, race } = generateDrawingPrompt('full-body', 'female', 'minimal');
 
-        // Generate using Gemini img2img
+        // Generate using Nano Banana img2img
         const result = await this.imageGenerationService.generateImage({
           prompt,
-          model: 'gemini-2.5-flash-image',
+          model: 'google/nano-banana',
           generationType: 'image-to-image',
           baseImage: base64Image,
         });

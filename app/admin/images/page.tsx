@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, DrawingImage } from '@/app/lib/supabase';
-import { isAdmin } from '@/app/lib/adminAuth';
+import { useAuth } from '@/app/contexts/AuthContext';
 import { ImagePoolService } from '@/app/services/imagePoolService';
 import { ImageModel } from '@/app/services/imageGenerationService';
 import { NavBar } from '@/components/nav-bar';
 
 export default function AdminImagesPage() {
   const router = useRouter();
+  const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [images, setImages] = useState<DrawingImage[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -22,22 +23,18 @@ export default function AdminImagesPage() {
   const [category, setCategory] = useState<string>('full-body');
   const [gender, setGender] = useState<string>('female');
   const [clothing, setClothing] = useState<string>('minimal');
-  const [selectedModel, setSelectedModel] = useState<ImageModel>('gemini-2.5-flash-image');
+  const [selectedModel, setSelectedModel] = useState<ImageModel>('google/nano-banana');
 
   const imagePoolService = new ImagePoolService();
 
   // Check admin access
   useEffect(() => {
-    const checkAdmin = async () => {
-      const admin = await isAdmin();
-      if (!admin) {
-        router.push('/');
-        return;
-      }
-      setLoading(false);
-    };
-    checkAdmin();
-  }, [router]);
+    if (!isAdmin) {
+      router.push('/');
+      return;
+    }
+    setLoading(false);
+  }, [isAdmin, router]);
 
   // Load images when filters change
   useEffect(() => {
@@ -309,6 +306,7 @@ export default function AdminImagesPage() {
                   >
                     <option value="ideogram-ai/ideogram-v3-turbo">Ideogram v3 Turbo</option>
                     <option value="gemini-2.5-flash-image">Gemini 2.5 Flash</option>
+                    <option value="google/nano-banana">Nano Banana (Replicate)</option>
                   </select>
                 </div>
 

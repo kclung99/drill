@@ -10,7 +10,7 @@ interface NavBarProps {
 }
 
 export function NavBar({ currentPage, showMidiStatus = false, midiActive = false }: NavBarProps) {
-  const { user, signIn, signOut } = useAuth();
+  const { user, isAdmin, signIn, signOut } = useAuth();
 
   return (
     <nav className="p-8">
@@ -56,6 +56,14 @@ export function NavBar({ currentPage, showMidiStatus = false, midiActive = false
           >
             settings
           </Link>
+          {isAdmin && (
+            <Link
+              href="/admin/images"
+              className="text-red-600 font-medium hover:underline"
+            >
+              admin
+            </Link>
+          )}
         </div>
         <div className="flex-1 flex justify-end items-center gap-2">
           {user ? (

@@ -313,18 +313,6 @@ export default function DrawingPractice() {
             </div>
 
             <div className="flex justify-center">
-              <label className="flex items-center gap-2 text-sm text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={alwaysGenerateNew}
-                  onChange={(e) => setAlwaysGenerateNew(e.target.checked)}
-                  className="rounded border-gray-400"
-                />
-                <span>always generate new</span>
-              </label>
-            </div>
-
-            <div className="flex justify-center">
               <button
                 onClick={startSession}
                 disabled={isLoading}
