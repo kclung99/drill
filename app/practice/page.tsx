@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useMidi } from '../hooks/useMidi';
 import Piano from '../components/Piano';
 import { detectChord, chordsMatch, getChordNotes, getChordMidiNotes, SessionConfig, CHORD_TYPES, SCALES, generateSessionChords } from '../utils/chordDetection';
@@ -34,7 +34,7 @@ export default function PracticeMode() {
     mode: 'chordTypes',
     chordTypes: ['maj', 'min'],
     scales: ['C'],
-    includeInversions: false
+    includeInversions: true
   });
   const [sessionDuration, setSessionDuration] = useState<number>(3); // minutes
 
@@ -99,11 +99,6 @@ export default function PracticeMode() {
     setHasAdvanced(false);
   };
 
-
-  const endSession = () => {
-    setIsSessionActive(false);
-    setIsSessionComplete(true);
-  };
 
   // Handle session completion (heatmap increment)
   useEffect(() => {
@@ -379,16 +374,29 @@ export default function PracticeMode() {
             )}
 
             <div className="flex flex-col items-center gap-2">
-              <div className="text-sm text-gray-500">options</div>
-              <label className="flex items-center gap-2 text-sm text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={sessionConfig.includeInversions || false}
-                  onChange={(e) => setSessionConfig(prev => ({ ...prev, includeInversions: e.target.checked }))}
-                  className="rounded border-gray-400"
-                />
-                <span>include inversions</span>
-              </label>
+              <div className="text-sm text-gray-500">inversions</div>
+              <div className="flex justify-center gap-2">
+                <button
+                  onClick={() => setSessionConfig(prev => ({ ...prev, includeInversions: false }))}
+                  className={`px-4 py-2 text-sm border border-gray-400 ${
+                    !sessionConfig.includeInversions
+                      ? 'bg-black text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  no
+                </button>
+                <button
+                  onClick={() => setSessionConfig(prev => ({ ...prev, includeInversions: true }))}
+                  className={`px-4 py-2 text-sm border border-gray-400 ${
+                    sessionConfig.includeInversions
+                      ? 'bg-black text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  yes
+                </button>
+              </div>
             </div>
 
             <div className="flex justify-center">
