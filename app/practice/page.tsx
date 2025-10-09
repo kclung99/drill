@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useMidi } from '../hooks/useMidi';
 import Piano from '../components/Piano';
 import { detectChord, chordsMatch, getChordNotes, getChordMidiNotes, SessionConfig, CHORD_TYPES, SCALES, generateSessionChords } from '../utils/chordDetection';
@@ -33,7 +33,8 @@ export default function PracticeMode() {
     chordCount: 3,
     mode: 'chordTypes',
     chordTypes: ['maj', 'min'],
-    scales: ['C']
+    scales: ['C'],
+    includeInversions: false
   });
   const [sessionDuration, setSessionDuration] = useState<number>(3); // minutes
 
@@ -73,6 +74,7 @@ export default function PracticeMode() {
 
   // Track when user makes an attempt
   const [lastAttemptKeys, setLastAttemptKeys] = useState<Set<number>>(new Set());
+  const [hasAdvanced, setHasAdvanced] = useState(false);
 
   const startSession = () => {
     const chords = generateSessionChords(sessionConfig);
@@ -94,33 +96,29 @@ export default function PracticeMode() {
     setShowChordNotes(false);
     setCurrentAttempts(0);
     setLastAttemptKeys(new Set());
+    setHasAdvanced(false);
   };
 
-  const nextChord = () => {
-    // In time-based mode, keep generating new chords until time runs out
-    setTotalChordsAnswered(prev => prev + 1);
 
-    // Generate a new chord and add to the list
-    const newChords = generateSessionChords({ ...sessionConfig, chordCount: 1 });
-    setSessionChords(prev => [...prev, ...newChords]);
-    setCurrentChordIndex(prev => prev + 1);
-    startCurrentChord();
-  };
-
-  const endSession = async () => {
+  const endSession = () => {
     setIsSessionActive(false);
     setIsSessionComplete(true);
-    // Note: Session data will be saved in the effect below when isSessionComplete changes
-
-    // Check if session meets minimum duration threshold before counting it
-    const { fetchSettings } = await import('@/app/services/settingsService');
-    const settings = await fetchSettings();
-
-    if (sessionDuration >= settings.minMusicDurationMinutes) {
-      // Only increment heatmap if session is valid
-      incrementSession('music');
-    }
   };
+
+  // Handle session completion (heatmap increment)
+  useEffect(() => {
+    if (isSessionComplete) {
+      // Check if session meets minimum duration threshold before counting it
+      import('@/app/services/settingsService').then(({ fetchSettings }) => {
+        fetchSettings().then((settings) => {
+          if (sessionDuration >= settings.minMusicDurationMinutes) {
+            // Only increment heatmap if session is valid
+            incrementSession('music');
+          }
+        });
+      });
+    }
+  }, [isSessionComplete, sessionDuration]);
 
   // Save session data when session completes
   useEffect(() => {
@@ -174,7 +172,8 @@ export default function PracticeMode() {
 
         if (remaining <= 0) {
           setSessionTimeRemaining(0);
-          endSession();
+          setIsSessionActive(false);
+          setIsSessionComplete(true);
         } else {
           setSessionTimeRemaining(remaining);
         }
@@ -194,7 +193,7 @@ export default function PracticeMode() {
     return () => clearInterval(interval);
   }, [startTime, isWaitingForNext, isSessionActive]);
 
-  // Track attempts when user plays enough keys and releases them
+  // Track attempts when user plays enough keys
   useEffect(() => {
     if (hasValidAttempt && startTime && isSessionActive && !isWaitingForNext) {
       // Check if this is a new attempt (different key combination)
@@ -206,29 +205,34 @@ export default function PracticeMode() {
         setCurrentAttempts(prev => prev + 1);
 
         if (isCorrect) {
-          // Correct answer - finish the chord after a short delay
-          setTimeout(() => {
-            if (startTime) {
-              const totalTime = Date.now() - startTime;
-              const result: SessionResult = {
-                chord: targetChord,
-                attempts: currentAttempts + 1, // +1 because state hasn't updated yet
-                correctTime: totalTime,
-                totalTime: totalTime
-              };
-              setSessionResults(prev => [...prev, result]);
-              setIsWaitingForNext(true);
+          setIsWaitingForNext(true);
 
-              // Auto-advance to next chord
-              setTimeout(() => {
-                nextChord();
-              }, 500);
-            }
-          }, 200); // Small delay to let user see the result
+          const totalTime = Date.now() - startTime;
+          const result: SessionResult = {
+            chord: targetChord,
+            attempts: currentAttempts + 1,
+            correctTime: totalTime,
+            totalTime: totalTime
+          };
+          setSessionResults(prev => [...prev, result]);
+
+          // Auto-advance to next chord
+          setTimeout(() => {
+            setTotalChordsAnswered(prev => prev + 1);
+            const newChords = generateSessionChords({ ...sessionConfig, chordCount: 1 });
+            setSessionChords(prev => [...prev, ...newChords]);
+            setCurrentChordIndex(prev => prev + 1);
+            setStartTime(Date.now());
+            setIsWaitingForNext(false);
+            setShowChordNotes(false);
+            setCurrentAttempts(0);
+            setLastAttemptKeys(new Set());
+            setHasAdvanced(false);
+          }, 800);
         }
       }
     }
-  }, [hasValidAttempt, isCorrect, startTime, isSessionActive, targetChord, currentAttempts, isWaitingForNext, pressedKeys, lastAttemptKeys]);
+  }, [hasValidAttempt, isCorrect, startTime, isSessionActive, targetChord, currentAttempts, isWaitingForNext, pressedKeys, lastAttemptKeys, sessionConfig, hasAdvanced]);
 
   // Calculate session metrics
   const sessionMetrics = useMemo(() => {
@@ -373,6 +377,19 @@ export default function PracticeMode() {
                 ))}
               </div>
             )}
+
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-sm text-gray-500">options</div>
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={sessionConfig.includeInversions || false}
+                  onChange={(e) => setSessionConfig(prev => ({ ...prev, includeInversions: e.target.checked }))}
+                  className="rounded border-gray-400"
+                />
+                <span>include inversions</span>
+              </label>
+            </div>
 
             <div className="flex justify-center">
               <button

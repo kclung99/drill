@@ -4,6 +4,18 @@ export const midiNoteToName = (midiNote: number): string => {
   return Note.fromMidi(midiNote);
 };
 
+// Normalize note to sharp notation for consistency
+const normalizeNoteToSharp = (noteName: string): string => {
+  const flatToSharp: { [key: string]: string } = {
+    'Db': 'C#',
+    'Eb': 'D#',
+    'Gb': 'F#',
+    'Ab': 'G#',
+    'Bb': 'A#'
+  };
+  return flatToSharp[noteName] || noteName;
+};
+
 export const detectChord = (midiNotes: number[]): string => {
   if (midiNotes.length < 3) {
     return '';
@@ -18,8 +30,8 @@ export const detectChord = (midiNotes: number[]): string => {
     return '';
   }
 
-  // Get the bass note (lowest pitch)
-  const bassNote = Note.pitchClass(noteNames[0]);
+  // Get the bass note (lowest pitch) - normalize to sharp
+  const bassNote = normalizeNoteToSharp(Note.pitchClass(noteNames[0]));
 
   // Detect possible chords
   const detectedChords = Chord.detect(uniqueNotes);
@@ -31,20 +43,16 @@ export const detectChord = (midiNotes: number[]): string => {
   // Find the chord that matches with the correct bass note (inversion)
   for (const chordName of detectedChords) {
     const chord = Chord.get(chordName);
-    const rootNote = Note.pitchClass(chord.tonic);
+    const rootNote = normalizeNoteToSharp(Note.pitchClass(chord.tonic));
+    const chordNotes = chord.notes.map(note => normalizeNoteToSharp(Note.pitchClass(note)));
+    const bassIndex = chordNotes.indexOf(bassNote);
 
     if (rootNote === bassNote) {
       // Root position
       return chordName;
-    } else {
-      // Check if it's an inversion
-      const chordNotes = chord.notes.map(note => Note.pitchClass(note));
-      const bassIndex = chordNotes.indexOf(bassNote);
-
-      if (bassIndex > 0) {
-        // It's an inversion - append slash notation
-        return `${chordName}/${bassNote}`;
-      }
+    } else if (bassIndex > 0) {
+      // It's an inversion - append slash notation with normalized bass
+      return `${chordName}/${bassNote}`;
     }
   }
 
@@ -57,10 +65,11 @@ export interface SessionConfig {
   mode: 'scales' | 'chordTypes';
   chordTypes: string[];
   scales: string[];
+  includeInversions?: boolean; // Include chord inversions in practice
 }
 
 export const CHORD_TYPES = [
-  { id: 'maj', name: 'Major', suffix: '' },
+  { id: 'maj', name: 'Major', suffix: '' }, // Just "C", not "CM"
   { id: 'min', name: 'Minor', suffix: 'm' },
   { id: 'dim', name: 'Diminished', suffix: 'dim' },
   { id: 'maj7', name: 'Major 7th', suffix: 'maj7' },
@@ -118,19 +127,64 @@ const getScaleChords = (scaleRoot: string, chordTypes: string[]): string[] => {
 
 const getAllChromaticChords = (chordTypes: string[]): string[] => {
   const chords: string[] = [];
-  const chromaToNote = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  // Include both sharp and flat enharmonic equivalents for training variety
+  const chromaToNotes = [
+    ['C'],           // 0
+    ['C#', 'Db'],    // 1
+    ['D'],           // 2
+    ['D#', 'Eb'],    // 3
+    ['E'],           // 4
+    ['F'],           // 5
+    ['F#', 'Gb'],    // 6
+    ['G'],           // 7
+    ['G#', 'Ab'],    // 8
+    ['A'],           // 9
+    ['A#', 'Bb'],    // 10
+    ['B']            // 11
+  ];
 
   for (const selectedType of chordTypes) {
     const chordType = CHORD_TYPES.find(ct => ct.id === selectedType);
     if (!chordType) continue;
 
-    // Add this chord type on all 12 chromatic roots
-    for (const root of chromaToNote) {
-      chords.push(root + chordType.suffix);
+    // Add this chord type on all 12 chromatic roots (with enharmonic variants)
+    for (const noteVariants of chromaToNotes) {
+      for (const root of noteVariants) {
+        chords.push(root + chordType.suffix);
+      }
     }
   }
 
   return chords;
+};
+
+const addInversions = (baseChords: string[]): string[] => {
+  const chordsWithInversions: string[] = [];
+
+  for (const chordName of baseChords) {
+    // Add the root position chord
+    chordsWithInversions.push(chordName);
+
+    // Get chord notes to generate inversions
+    const chord = Chord.get(chordName);
+    if (chord.notes.length >= 3) {
+      // Add first inversion (third in bass) - normalize to sharp
+      const firstInversionBass = normalizeNoteToSharp(Note.pitchClass(chord.notes[1]));
+      chordsWithInversions.push(`${chordName}/${firstInversionBass}`);
+
+      // Add second inversion (fifth in bass) - normalize to sharp
+      const secondInversionBass = normalizeNoteToSharp(Note.pitchClass(chord.notes[2]));
+      chordsWithInversions.push(`${chordName}/${secondInversionBass}`);
+
+      // For 7th chords, add third inversion (seventh in bass) - normalize to sharp
+      if (chord.notes.length >= 4) {
+        const thirdInversionBass = normalizeNoteToSharp(Note.pitchClass(chord.notes[3]));
+        chordsWithInversions.push(`${chordName}/${thirdInversionBass}`);
+      }
+    }
+  }
+
+  return chordsWithInversions;
 };
 
 export const generateSessionChords = (config: SessionConfig): string[] => {
@@ -152,10 +206,15 @@ export const generateSessionChords = (config: SessionConfig): string[] => {
   // Remove duplicates
   const uniqueChords = [...new Set(allChords)];
 
+  // Add inversions if requested
+  const chordsPool = config.includeInversions
+    ? addInversions(uniqueChords)
+    : uniqueChords;
+
   // Randomly select the requested number of chords
   const sessionChords: string[] = [];
   for (let i = 0; i < config.chordCount; i++) {
-    const randomChord = uniqueChords[Math.floor(Math.random() * uniqueChords.length)];
+    const randomChord = chordsPool[Math.floor(Math.random() * chordsPool.length)];
     sessionChords.push(randomChord);
   }
 
@@ -175,7 +234,10 @@ export const getRandomChord = (): string => {
 };
 
 export const getChordNotes = (chordName: string): string[] => {
-  const chord = Chord.get(chordName);
+  // Handle inversions - for slash chords, return the base chord notes
+  // The bass note in slash notation is just for voicing, not part of the chord definition
+  const baseChordName = chordName.split('/')[0];
+  const chord = Chord.get(baseChordName);
   return chord.notes;
 };
 
@@ -188,41 +250,107 @@ const noteToChroma = (noteName: string): number => {
 export const chordsMatch = (detectedChord: string, targetChord: string): boolean => {
   if (!detectedChord || !targetChord) return false;
 
-  const detected = Chord.get(detectedChord);
-  const target = Chord.get(targetChord);
+  // Parse both chords
+  const parseChord = (chordStr: string): { baseChord: string, bassNote: string | null } => {
+    const parts = chordStr.split('/');
+    return {
+      baseChord: parts[0],
+      bassNote: parts[1] || null
+    };
+  };
 
-  if (detected.notes.length === 0 || target.notes.length === 0) return false;
+  const detected = parseChord(detectedChord);
+  const target = parseChord(targetChord);
 
-  // Convert notes to chromatic numbers (0-11) which are enharmonic-friendly
-  const detectedChromas = detected.notes
+  // Get chord objects
+  const detectedChordObj = Chord.get(detected.baseChord);
+  const targetChordObj = Chord.get(target.baseChord);
+
+  if (!detectedChordObj.notes.length || !targetChordObj.notes.length) {
+    console.log('Invalid chord:', { detectedChord, targetChord });
+    return false;
+  }
+
+  // Compare notes as chromatic values (enharmonic-friendly)
+  const detectedChromas = detectedChordObj.notes
     .map(noteToChroma)
-    .filter(chroma => chroma !== -1)
+    .filter(c => c !== -1)
     .sort();
 
-  const targetChromas = target.notes
+  const targetChromas = targetChordObj.notes
     .map(noteToChroma)
-    .filter(chroma => chroma !== -1)
+    .filter(c => c !== -1)
     .sort();
 
-  // Compare chromatic values instead of note names
-  return JSON.stringify(detectedChromas) === JSON.stringify(targetChromas);
+  const notesMatch = JSON.stringify(detectedChromas) === JSON.stringify(targetChromas);
+
+  // For root position chords, just check notes match
+  if (!detected.bassNote && !target.bassNote) {
+    return notesMatch;
+  }
+
+  // For inversions, also check bass note matches (enharmonically)
+  const detectedBassChroma = detected.bassNote ? noteToChroma(detected.bassNote) : null;
+  const targetBassChroma = target.bassNote ? noteToChroma(target.bassNote) : null;
+
+  return notesMatch && detectedBassChroma === targetBassChroma;
 };
 
 // Get MIDI notes for a chord
 export const getChordMidiNotes = (chordName: string): number[] => {
-  const chord = Chord.get(chordName);
+  // Handle inversions (slash chords)
+  const parts = chordName.split('/');
+  const baseChordName = parts[0];
+  const bassNoteName = parts[1]; // e.g., "E" in "Am/E"
+
+  const chord = Chord.get(baseChordName);
   if (chord.notes.length === 0) return [];
 
-  // Convert chord notes to MIDI numbers in a good octave range
-  return chord.notes.map(noteName => {
-    const note = Note.get(noteName);
-    // Place chord in octave 4-5 range (MIDI 60-84)
-    let midiNote = note.chroma !== undefined ? note.chroma + 60 : 60;
+  // Start at C4 (MIDI 60)
+  const baseOctave = 60;
 
-    // Spread notes across octaves for better voicing
-    const noteIndex = chord.notes.indexOf(noteName);
-    if (noteIndex > 0) {
-      midiNote += Math.floor(noteIndex / 3) * 12; // Move higher notes up an octave
+  if (bassNoteName) {
+    // For inversions, put the bass note at the bottom
+    const bassNote = Note.get(bassNoteName);
+    const bassMidi = (bassNote.chroma !== undefined ? bassNote.chroma : 0) + baseOctave;
+
+    // Add the rest of the chord notes above the bass
+    const otherNotes = chord.notes
+      .filter(noteName => {
+        const noteChroma = Note.get(noteName).chroma;
+        return noteChroma !== bassNote.chroma;
+      })
+      .map((noteName, idx) => {
+        const note = Note.get(noteName);
+        let midiNote = (note.chroma !== undefined ? note.chroma : 0) + baseOctave;
+
+        // If this note is lower than the bass, move it up an octave
+        if (midiNote <= bassMidi) {
+          midiNote += 12;
+        }
+
+        return midiNote;
+      })
+      .sort((a, b) => a - b); // Sort to ensure proper voicing
+
+    return [bassMidi, ...otherNotes];
+  }
+
+  // Root position - place chord around C4
+  return chord.notes.map((noteName, idx) => {
+    const note = Note.get(noteName);
+    let midiNote = (note.chroma !== undefined ? note.chroma : 0) + baseOctave;
+
+    // Ensure notes are ascending and in the same octave range
+    if (idx > 0) {
+      const prevNote = chord.notes[idx - 1];
+      const prevChroma = Note.get(prevNote).chroma || 0;
+      const currChroma = note.chroma || 0;
+
+      // If current note's chroma is less than or equal to previous, move it up an octave
+      if (currChroma <= prevChroma) {
+        midiNote += 12;
+      }
     }
 
     return midiNote;
