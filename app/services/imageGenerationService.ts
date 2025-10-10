@@ -1,4 +1,4 @@
-export type ImageModel = 'ideogram-ai/ideogram-v3-turbo' | 'gemini-2.5-flash-image' | 'google/nano-banana';
+export type ImageModel = 'ideogram-ai/ideogram-v3-turbo' | 'gemini-2.5-flash-image' | 'google/nano-banana' | 'black-forest-labs/flux-kontext-pro';
 export type GenerationType = 'text-to-image' | 'image-to-image';
 
 export interface GenerateImageOptions {
@@ -32,6 +32,8 @@ export class ImageGenerationService {
       imageUrl = await this.generateWithGemini(options.prompt, options.baseImage);
     } else if (model === 'google/nano-banana') {
       imageUrl = await this.generateWithNanoBanana(options.prompt, options.baseImage);
+    } else if (model === 'black-forest-labs/flux-kontext-pro') {
+      imageUrl = await this.generateWithFluxKontextPro(options.prompt, options.baseImage);
     } else {
       throw new Error(`Unsupported model: ${model}`);
     }
@@ -99,6 +101,29 @@ export class ImageGenerationService {
     }
 
     const { imageUrl } = await response.json();
+    return imageUrl;
+  }
+
+  private async generateWithFluxKontextPro(prompt: string, baseImage?: string): Promise<string> {
+    console.log('🚀 Calling FLUX Kontext Pro API endpoint...');
+    const response = await fetch('/api/generate-image-flux-kontext', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ prompt, baseImage }),
+    });
+
+    console.log('📡 FLUX API response status:', response.status);
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('❌ FLUX API error:', error);
+      throw new Error(error.error || 'Failed to generate image with FLUX Kontext Pro');
+    }
+
+    const { imageUrl } = await response.json();
+    console.log('✅ FLUX API returned image URL');
     return imageUrl;
   }
 

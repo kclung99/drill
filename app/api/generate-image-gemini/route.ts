@@ -53,8 +53,7 @@ export async function POST(request: NextRequest) {
       contents,
       config: {
         imageConfig: {
-          aspectRatio: '3:4',
-          ...(baseImage && { sameSize: true }), // Maintain original dimensions for image-to-image
+          aspectRatio: '3:4', // Always use 3:4 for unified output
         },
       },
     });

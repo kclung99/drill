@@ -21,6 +21,83 @@ export class ImagePoolService {
     this.imageGenerationService.setDefaultModel(model);
   }
 
+  async getRefsForSession(
+    count: number,
+    bodyPart: string = 'full-body',
+    gender: string = 'female',
+    clothing: string = 'minimal'
+  ): Promise<any[]> {
+    try {
+      // Build query with filters - fetch more than needed for randomization
+      const fetchCount = Math.min(count * 3, 50);
+
+      let query = supabase
+        .from('drawing_refs')
+        .select('*')
+        .eq('body_part', bodyPart)
+        .eq('clothing_state', clothing);
+
+      // Filter by gender (handle 'both' case)
+      if (gender !== 'both') {
+        query = query.eq('gender', gender);
+      }
+
+      // Get refs prioritizing least used
+      const { data: availableRefs, error } = await query
+        .order('used_count', { ascending: true })
+        .order('created_at', { ascending: true })
+        .limit(fetchCount);
+
+      if (error) {
+        throw error;
+      }
+
+      const existingCount = availableRefs?.length || 0;
+
+      if (existingCount < count) {
+        console.warn(`⚠️  Not enough refs: requested ${count}, found ${existingCount} for ${bodyPart}/${gender}/${clothing}`);
+
+        if (existingCount === 0) {
+          throw new Error(`No reference images available for ${bodyPart}/${gender}/${clothing}.`);
+        }
+
+        // Return what we have
+        const refIds = availableRefs.map(ref => ref.id);
+        await this.markRefsAsUsed(refIds);
+        return availableRefs;
+      }
+
+      // Randomly select from the pool of least-used refs
+      const selectedRefs = this.randomlySelectImages(availableRefs, count);
+
+      // Mark selected refs as used
+      const refIds = selectedRefs.map(ref => ref.id);
+      await this.markRefsAsUsed(refIds);
+
+      return selectedRefs;
+    } catch (error) {
+      console.error('Failed to get refs for session:', error);
+      throw error;
+    }
+  }
+
+  private async markRefsAsUsed(refIds: string[]): Promise<void> {
+    try {
+      for (const refId of refIds) {
+        const { error } = await supabase.rpc('increment_ref_usage', {
+          ref_id: refId
+        });
+
+        if (error) {
+          console.error(`Failed to mark ref ${refId} as used:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to mark refs as used:', error);
+      // Non-critical error, don't throw
+    }
+  }
+
   async getImagesForSession(
     count: number,
     category: string = 'full-body',
@@ -268,10 +345,21 @@ export class ImagePoolService {
   }
 
   async generateFromPose(poseImageDataUrl: string, maxRetries: number = 0): Promise<DrawingImage> {
-    console.log('🎭 Extracting pose and generating new image...');
+    return this.generateFromPoseWithModel(poseImageDataUrl, 'google/nano-banana', maxRetries, 'female');
+  }
+
+  async generateFromPoseWithModel(poseImageDataUrl: string, model: ImageModel, maxRetries: number = 0, gender: string = 'female'): Promise<DrawingImage> {
+    console.log(`🎭 Extracting pose and generating new image with ${model} (${gender})...`);
 
     const base64Image = poseImageDataUrl.split(',')[1];
-    const prompt = `Keep the exact same full body pose and position from head to toe. Wearing skin-tone short athletic top and tight shorts, barefoot. No jewelry or decorative items. Swap out the head. Neutral grey background with soft spotlight.`;
+
+    // Use different prompts based on gender
+    const prompt = gender === 'male'
+      ? `Keep the exact same full body pose and position from head to toe. Wearing athletic shorts, barefoot. No jewelry or decorative items. Swap out the head. Neutral grey background with soft spotlight.`
+      : `Keep the exact same full body pose and position from head to toe. Wearing skin-tone short athletic top and tight shorts, barefoot. No jewelry or decorative items. Swap out the head. Neutral grey background with soft spotlight.`;
+
+    console.log('📝 Pose extraction prompt:', prompt);
+    console.log('🔧 Model:', model, 'Gender:', gender);
 
     let lastError: any;
 
@@ -286,10 +374,10 @@ export class ImagePoolService {
         // Generate random attributes for metadata storage only
         const { bodyType, race } = generateDrawingPrompt('full-body', 'female', 'minimal');
 
-        // Generate using Nano Banana img2img
+        // Generate using selected model img2img
         const result = await this.imageGenerationService.generateImage({
           prompt,
-          model: 'google/nano-banana',
+          model,
           generationType: 'image-to-image',
           baseImage: base64Image,
         });
@@ -305,7 +393,7 @@ export class ImagePoolService {
             storage_path: storagePath,
             prompt,
             category: 'full-body',
-            subject_type: 'female',
+            subject_type: gender,
             clothing_state: 'minimal',
             attributes: {
               body_type: bodyType,
@@ -334,7 +422,7 @@ export class ImagePoolService {
             console.log('🔄 Retrying...');
             continue; // Try again without throwing
           } else {
-            console.error('❌ Failed after all retries due to content filtering');
+            console.log('❌ Failed after all retries due to content filtering');
             throw new Error('Content filtered: Image generation blocked by safety filters. Try a different reference image.');
           }
         } else {
@@ -343,7 +431,7 @@ export class ImagePoolService {
             console.log('🔄 Retrying...');
             continue; // Try again without throwing
           } else {
-            console.error('❌ Failed after all retries');
+            console.log('❌ Failed after all retries');
             throw new Error(`Failed to generate from pose after ${maxRetries + 1} attempts: ${errorMessage}`);
           }
         }

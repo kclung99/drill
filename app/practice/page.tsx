@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useMidi } from '../hooks/useMidi';
 import Piano from '../components/Piano';
-import { detectChord, chordsMatch, getChordNotes, getChordMidiNotes, SessionConfig, CHORD_TYPES, SCALES, generateSessionChords } from '../utils/chordDetection';
+import { detectChord, chordsMatch, chordsMatchMidi, getChordNotes, getChordMidiNotes, SessionConfig, CHORD_TYPES, SCALES, generateSessionChords } from '../utils/chordDetection';
 import { incrementSession } from '../utils/habitTracker';
 import { NavBar } from '@/components/nav-bar';
 import { UserSettings } from '@/app/services/settingsService';
@@ -63,8 +63,9 @@ export default function PracticeMode() {
   }, [pressedKeys]);
 
   const isCorrect = useMemo(() => {
-    return currentChord && targetChord && chordsMatch(currentChord, targetChord);
-  }, [currentChord, targetChord]);
+    if (!targetChord || pressedKeys.size === 0) return false;
+    return chordsMatchMidi(Array.from(pressedKeys), targetChord);
+  }, [pressedKeys, targetChord]);
 
   const targetChordNotes = targetChord ? getChordNotes(targetChord) : [];
   const hasValidAttempt = useMemo(() => {

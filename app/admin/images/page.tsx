@@ -8,10 +8,36 @@ import { ImagePoolService } from '@/app/services/imagePoolService';
 import { ImageModel } from '@/app/services/imageGenerationService';
 import { NavBar } from '@/components/nav-bar';
 
+interface DrawingRef {
+  id: string;
+  filename: string;
+  source_url: string;
+  page_url: string | null;
+  platform: string | null;
+  body_part: string | null;
+  gender: string | null;
+  clothing_state: string;
+  attributes: any;
+  used_count: number;
+  used_for_generation: boolean;
+  created_at: string;
+  used_at: string | null;
+  generation_status: 'pending' | 'processing' | 'success' | 'failed' | 'blocked';
+  generation_attempts: number;
+  last_attempt_at: string | null;
+  last_error: string | null;
+  generatedImage?: DrawingImage | null;
+}
+
 export default function AdminImagesPage() {
   const router = useRouter();
   const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
+
+  // View mode: 'generated' or 'refs'
+  const [viewMode, setViewMode] = useState<'generated' | 'refs'>('refs');
+
+  // Generated images state
   const [images, setImages] = useState<DrawingImage[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
@@ -19,11 +45,23 @@ export default function AdminImagesPage() {
   const [poseImage, setPoseImage] = useState<string | null>(null);
   const [isPoseExtracting, setIsPoseExtracting] = useState(false);
 
+  // Reference images state
+  const [refs, setRefs] = useState<DrawingRef[]>([]);
+  const [selectedRefIds, setSelectedRefIds] = useState<Set<string>>(new Set());
+  const [fullscreenRef, setFullscreenRef] = useState<DrawingRef | null>(null);
+  const [isExtractingRefs, setIsExtractingRefs] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState({ current: 0, total: 0 });
+
   // Filters
   const [category, setCategory] = useState<string>('full-body');
   const [gender, setGender] = useState<string>('female');
   const [clothing, setClothing] = useState<string>('minimal');
   const [selectedModel, setSelectedModel] = useState<ImageModel>('google/nano-banana');
+
+  // Ref filters
+  const [refBodyPart, setRefBodyPart] = useState<string>('full-body');
+  const [refGender, setRefGender] = useState<string>('female');
+  const [showGenerationInfo, setShowGenerationInfo] = useState<boolean>(false);
 
   const imagePoolService = new ImagePoolService();
 
@@ -38,10 +76,17 @@ export default function AdminImagesPage() {
 
   // Load images when filters change
   useEffect(() => {
-    if (!loading) {
+    if (!loading && viewMode === 'generated') {
       loadImages();
     }
-  }, [category, gender, clothing, loading]);
+  }, [category, gender, clothing, loading, viewMode]);
+
+  // Load refs when filters change
+  useEffect(() => {
+    if (!loading && viewMode === 'refs') {
+      loadRefs();
+    }
+  }, [refBodyPart, refGender, loading, viewMode]);
 
   const loadImages = async () => {
     try {
@@ -204,6 +249,301 @@ export default function AdminImagesPage() {
     }
   };
 
+  // Reference image functions
+  const loadRefs = async () => {
+    try {
+      console.log('Loading refs with filters:', { refBodyPart, refGender });
+
+      // First get all refs with filters
+      let query = supabase
+        .from('drawing_refs')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (refBodyPart !== 'all') {
+        query = query.eq('body_part', refBodyPart);
+      }
+
+      if (refGender !== 'all') {
+        query = query.eq('gender', refGender);
+      }
+
+      const { data: refs, error } = await query;
+
+      if (error) {
+        console.error('Error loading refs:', error);
+        throw error;
+      }
+
+      console.log('Loaded refs:', refs?.length, 'images');
+
+      if (!refs || refs.length === 0) {
+        setRefs([]);
+        setSelectedRefIds(new Set());
+        return;
+      }
+
+      // Fetch all generated images for these refs in a single query
+      const refIds = refs.map(ref => ref.id);
+      const { data: generatedImages } = await supabase
+        .from('drawing_images')
+        .select('*')
+        .in('ref_image_id', refIds)
+        .order('created_at', { ascending: false });
+
+      // Create a map of ref_id -> latest generated image
+      const generatedMap = new Map();
+      generatedImages?.forEach(img => {
+        if (!generatedMap.has(img.ref_image_id)) {
+          generatedMap.set(img.ref_image_id, img);
+        }
+      });
+
+      // Combine refs with their generated images
+      const refsWithGenerated = refs.map(ref => ({
+        ...ref,
+        generatedImage: generatedMap.get(ref.id) || null
+      }));
+
+      setRefs(refsWithGenerated as any);
+      setSelectedRefIds(new Set());
+    } catch (error) {
+      console.error('Failed to load refs:', error);
+    }
+  };
+
+  const toggleRefSelect = (id: string) => {
+    setSelectedRefIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllRefs = () => {
+    setSelectedRefIds(new Set(refs.map(ref => ref.id)));
+  };
+
+  const deselectAllRefs = () => {
+    setSelectedRefIds(new Set());
+  };
+
+  const handleDeleteRefs = async () => {
+    if (selectedRefIds.size === 0) return;
+    if (!confirm(`Delete ${selectedRefIds.size} reference image(s)?`)) return;
+
+    try {
+      const refsToDelete = refs.filter(ref => selectedRefIds.has(ref.id));
+
+      // Delete from storage
+      const filenames = refsToDelete.map(ref => ref.filename);
+      const { error: storageError } = await supabase.storage
+        .from('images')
+        .remove(filenames);
+
+      if (storageError) {
+        console.error('Storage deletion error:', storageError);
+      }
+
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('drawing_refs')
+        .delete()
+        .in('id', Array.from(selectedRefIds));
+
+      if (dbError) throw dbError;
+
+      // Reload refs
+      await loadRefs();
+    } catch (error) {
+      console.error('Failed to delete refs:', error);
+      alert('Failed to delete references');
+    }
+  };
+
+  const handleExtractPosesFromRefs = async () => {
+    if (selectedRefIds.size === 0) return;
+
+    setIsExtractingRefs(true);
+    const selectedRefs = refs.filter(ref => selectedRefIds.has(ref.id));
+    setExtractionProgress({ current: 0, total: selectedRefs.length });
+
+    const results = {
+      successful: 0,
+      failed: 0,
+      blocked: 0,
+      errors: [] as string[]
+    };
+
+    try {
+      // Process all refs in parallel
+      const processRef = async (ref: DrawingRef, index: number) => {
+      let lastError: string | null = null;
+      let isBlocked = false;
+
+      console.log(`🔵 Processing ${index + 1}/${selectedRefs.length}: ${ref.filename} with ${selectedModel}`);
+
+      // Mark as processing and reset previous errors
+      console.log(`🔵 Updating DB status to 'processing' for ${ref.filename}`);
+      try {
+        const { error: updateError } = await supabase
+          .from('drawing_refs')
+          .update({
+            generation_status: 'processing',
+            last_attempt_at: new Date().toISOString(),
+            last_error: null
+          })
+          .eq('id', ref.id);
+
+        if (updateError) {
+          console.log(`⚠️  DB update error (non-critical):`, updateError);
+        } else {
+          console.log(`🔵 DB status updated successfully`);
+        }
+      } catch (dbError) {
+        console.log(`⚠️  DB update failed (non-critical):`, dbError);
+      }
+
+      // Try once, then retry once if failed (2 total attempts)
+      let success = false;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          if (attempt > 0) {
+            console.log(`🔵 Retry ${attempt + 1} for ${ref.filename}`);
+          }
+
+          // Fetch image and convert to data URL
+          console.log(`🔵 Fetching image from storage: ${ref.filename}`);
+          const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${ref.filename}`);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.statusText}`);
+          }
+
+          const blob = await response.blob();
+          const dataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+
+          // Extract pose using selected model - NO RETRY in the service itself
+          console.log(`🔵 About to call generateFromPoseWithModel with gender: ${ref.gender || 'female'}`);
+          const generatedImage = await imagePoolService.generateFromPoseWithModel(
+            dataUrl,
+            selectedModel,
+            0,
+            ref.gender || 'female' // Pass gender from ref, default to female
+          );
+          console.log(`🔵 generateFromPoseWithModel completed`);
+
+          // Link the generated image back to the ref image
+          await supabase
+            .from('drawing_images')
+            .update({ ref_image_id: ref.id })
+            .eq('id', generatedImage.id);
+
+          // Mark as success
+          await supabase
+            .from('drawing_refs')
+            .update({
+              used_for_generation: true,
+              used_at: new Date().toISOString(),
+              generation_status: 'success',
+              generation_attempts: ref.generation_attempts + attempt + 1,
+              last_attempt_at: new Date().toISOString(),
+              last_error: null
+            })
+            .eq('id', ref.id);
+
+          results.successful++;
+          success = true;
+          console.log(`✅ Success: ${ref.filename}`);
+          break;
+
+        } catch (error: any) {
+          const errorMessage = error?.message || String(error);
+          lastError = errorMessage;
+
+          // Check if it's a content moderation block
+          if (errorMessage.includes('IMAGE_OTHER') ||
+              errorMessage.includes('SAFETY') ||
+              errorMessage.includes('blocked') ||
+              errorMessage.includes('Content filtered')) {
+            isBlocked = true;
+            console.warn(`⚠️  ${ref.filename} blocked by content filters`);
+            break; // Don't retry if blocked
+          } else {
+            console.warn(`⚠️  Attempt ${attempt + 1}/2 failed for ${ref.filename}: ${errorMessage}`);
+          }
+
+          // Suppress error notifications - don't throw
+        }
+      }
+
+      // ALWAYS update status, even if failed - critical to prevent stuck state
+      if (!success) {
+        const finalStatus = isBlocked ? 'blocked' : 'failed';
+
+        try {
+          await supabase
+            .from('drawing_refs')
+            .update({
+              generation_status: finalStatus,
+              generation_attempts: ref.generation_attempts + 2,
+              last_attempt_at: new Date().toISOString(),
+              last_error: lastError
+            })
+            .eq('id', ref.id);
+        } catch (dbError) {
+          console.error(`Failed to update DB status for ${ref.filename}:`, dbError);
+        }
+
+        if (isBlocked) {
+          results.blocked++;
+        } else {
+          results.failed++;
+        }
+        results.errors.push(`${ref.filename}: ${lastError}`);
+        console.log(`❌ Failed: ${ref.filename}`);
+      }
+
+      // Update progress - ALWAYS do this
+      setExtractionProgress(prev => ({ current: prev.current + 1, total: prev.total }));
+    };
+
+      // Run all in parallel
+      await Promise.all(selectedRefs.map((ref, i) => processRef(ref, i)));
+
+      // Reload all refs once at the end
+      await loadRefs();
+
+      // Small delay before closing to show completion
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Log results to console
+      console.log(`✅ Successfully extracted ${results.successful} pose(s)`);
+      if (results.blocked > 0) {
+        console.log(`⚠️  Blocked by content filters: ${results.blocked}`);
+      }
+      if (results.failed > 0) {
+        console.log(`❌ Failed: ${results.failed}`);
+        results.errors.forEach(err => console.log(err));
+      }
+
+      deselectAllRefs();
+    } catch (error) {
+      console.log('💥 Extraction handler error:', error);
+    } finally {
+      // ALWAYS clean up, even if there's an error
+      setIsExtractingRefs(false);
+      setExtractionProgress({ current: 0, total: 0 });
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
@@ -229,10 +569,35 @@ export default function AdminImagesPage() {
 
       <div className="p-8">
         <div className="max-w-7xl mx-auto">
+          {/* View Mode Toggle */}
+          <div className="mb-6 flex justify-center gap-2">
+            <button
+              onClick={() => setViewMode('generated')}
+              className={`px-6 py-3 text-sm font-medium border border-gray-400 ${
+                viewMode === 'generated'
+                  ? 'bg-black text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Generated Images
+            </button>
+            <button
+              onClick={() => setViewMode('refs')}
+              className={`px-6 py-3 text-sm font-medium border border-gray-400 ${
+                viewMode === 'refs'
+                  ? 'bg-black text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Reference Images
+            </button>
+          </div>
 
-          {/* Filters and Actions */}
-          <div className="mb-8 space-y-4">
-            <div className="flex items-start justify-center gap-8">
+          {viewMode === 'generated' ? (
+            <>
+              {/* Filters and Actions */}
+              <div className="mb-8 space-y-4">
+                <div className="flex items-start justify-center gap-8">
               {/* Left: Filters */}
               <div className="space-y-4">
                 <div className="flex flex-col gap-2">
@@ -306,7 +671,8 @@ export default function AdminImagesPage() {
                   >
                     <option value="ideogram-ai/ideogram-v3-turbo">Ideogram v3 Turbo</option>
                     <option value="gemini-2.5-flash-image">Gemini 2.5 Flash</option>
-                    <option value="google/nano-banana">Nano Banana (Replicate)</option>
+                    <option value="google/nano-banana">Nano Banana</option>
+                    <option value="black-forest-labs/flux-kontext-pro">FLUX Kontext Pro</option>
                   </select>
                 </div>
 
@@ -501,6 +867,277 @@ export default function AdminImagesPage() {
               No images found for this combination
             </div>
           )}
+            </>
+          ) : (
+            <>
+              {/* Reference Images View */}
+              <div className="mb-8 space-y-4">
+                <div className="flex items-start justify-center gap-8">
+                  {/* Left: Filters */}
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-2">
+                      <div className="text-sm text-gray-500">body part</div>
+                      <div className="flex gap-2 flex-wrap">
+                        {['all', 'full-body', 'hands', 'feet', 'portraits'].map(part => (
+                          <button
+                            key={part}
+                            onClick={() => setRefBodyPart(part)}
+                            className={`px-4 py-2 text-sm border border-gray-400 ${
+                              refBodyPart === part
+                                ? 'bg-black text-white'
+                                : 'bg-white text-gray-600 hover:bg-gray-100'
+                            }`}
+                          >
+                            {part.replace('-', ' ')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <div className="text-sm text-gray-500">gender</div>
+                      <div className="flex gap-2">
+                        {['all', 'male', 'female'].map(g => (
+                          <button
+                            key={g}
+                            onClick={() => setRefGender(g)}
+                            className={`px-4 py-2 text-sm border border-gray-400 ${
+                              refGender === g
+                                ? 'bg-black text-white'
+                                : 'bg-white text-gray-600 hover:bg-gray-100'
+                            }`}
+                          >
+                            {g}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <div className="text-sm text-gray-500">display</div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowGenerationInfo(true)}
+                          className={`px-4 py-2 text-sm border border-gray-400 ${
+                            showGenerationInfo
+                              ? 'bg-black text-white'
+                              : 'bg-white text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          with generation info
+                        </button>
+                        <button
+                          onClick={() => setShowGenerationInfo(false)}
+                          className={`px-4 py-2 text-sm border border-gray-400 ${
+                            !showGenerationInfo
+                              ? 'bg-black text-white'
+                              : 'bg-white text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          refs only
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-sm text-gray-500">
+                      {refs.length} reference image(s)
+                      {loading && ' (loading...)'}
+                    </div>
+                  </div>
+
+                  {/* Middle: Model Selection */}
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-2">
+                      <div className="text-sm text-gray-500">model</div>
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value as ImageModel)}
+                        className="px-3 py-2 border border-gray-400 text-sm"
+                      >
+                        <option value="google/nano-banana">Nano Banana</option>
+                        <option value="gemini-2.5-flash-image">Gemini 2.5 Flash</option>
+                        <option value="black-forest-labs/flux-kontext-pro">FLUX Kontext Pro</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Right: Actions */}
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-2">
+                      <div className="text-sm text-gray-500">selection</div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={selectAllRefs}
+                          className="px-4 py-2 bg-gray-600 text-white text-sm hover:bg-gray-700"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          onClick={deselectAllRefs}
+                          className="px-4 py-2 bg-gray-600 text-white text-sm hover:bg-gray-700"
+                        >
+                          Deselect All
+                        </button>
+                      </div>
+                    </div>
+
+                    {selectedRefIds.size > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <div className="text-sm text-gray-500">selected ({selectedRefIds.size})</div>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={handleExtractPosesFromRefs}
+                            disabled={isExtractingRefs}
+                            className="px-4 py-2 bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50"
+                          >
+                            {isExtractingRefs ? 'Extracting...' : 'Extract Poses'}
+                          </button>
+                          <button
+                            onClick={handleDeleteRefs}
+                            disabled={isExtractingRefs}
+                            className="px-4 py-2 bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {isExtractingRefs && (
+                      <div className="text-sm space-y-1">
+                        <div className="text-green-600 font-medium">
+                          Extracting poses...
+                        </div>
+                        <div className="text-gray-600">
+                          {extractionProgress.current} / {extractionProgress.total}
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-green-600 h-2 rounded-full transition-all"
+                            style={{
+                              width: `${(extractionProgress.current / extractionProgress.total) * 100}%`
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="text-sm text-gray-500">
+                      {refs.length} reference image(s)
+                      {loading && ' (loading...)'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Reference Images Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {refs.map(ref => (
+                  <div
+                    key={ref.id}
+                    className="relative group border border-gray-300 bg-white"
+                  >
+                    {/* Checkbox */}
+                    <div className="absolute top-2 left-2 z-10" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedRefIds.has(ref.id)}
+                        onChange={() => toggleRefSelect(ref.id)}
+                        className="w-5 h-5 rounded border-gray-400"
+                      />
+                    </div>
+
+                    {/* Status badge - only show when generation info is enabled */}
+                    {showGenerationInfo && (
+                      <>
+                        {ref.generation_status === 'success' && (
+                          <div className="absolute top-2 right-2 z-10 bg-green-600 text-white text-xs px-2 py-1 rounded">
+                            ✓ Success
+                          </div>
+                        )}
+                        {ref.generation_status === 'blocked' && (
+                          <div className="absolute top-2 right-2 z-10 bg-orange-600 text-white text-xs px-2 py-1 rounded">
+                            ⚠ Blocked
+                          </div>
+                        )}
+                        {ref.generation_status === 'failed' && (
+                          <div className="absolute top-2 right-2 z-10 bg-red-600 text-white text-xs px-2 py-1 rounded">
+                            ✕ Failed
+                          </div>
+                        )}
+                        {ref.generation_status === 'processing' && (
+                          <div className="absolute top-2 right-2 z-10 bg-blue-600 text-white text-xs px-2 py-1 rounded">
+                            ⟳ Processing
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Image */}
+                    <div
+                      className="aspect-square relative overflow-hidden cursor-pointer"
+                      onClick={() => setFullscreenRef(ref)}
+                    >
+                      {showGenerationInfo && ref.generatedImage ? (
+                        // Show ref + generated side by side
+                        <div className="flex h-full">
+                          <div className="w-1/2 relative">
+                            <img
+                              src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${ref.filename}`}
+                              alt="Reference"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="w-1/2 relative">
+                            <img
+                              src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/drawing-images/${ref.generatedImage.storage_path}`}
+                              alt="Generated"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <img
+                          src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${ref.filename}`}
+                          alt={ref.filename}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                    </div>
+
+                    {/* Metadata overlay on hover */}
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-75 transition-all duration-200 flex items-end opacity-0 group-hover:opacity-100 pointer-events-none">
+                      <div className="p-3 text-white text-xs space-y-1 w-full">
+                        <div className="font-medium truncate">{ref.filename}</div>
+                        {ref.body_part && <div>part: {ref.body_part.replace('_', ' ')}</div>}
+                        {ref.gender && <div>gender: {ref.gender}</div>}
+                        {ref.platform && <div>source: {ref.platform}</div>}
+                        <div className="text-gray-300 pt-1 border-t border-gray-600">
+                          created: {formatDate(ref.created_at)}
+                        </div>
+                        {ref.generation_attempts > 0 && (
+                          <div className="text-yellow-300 text-xs">
+                            attempts: {ref.generation_attempts}
+                          </div>
+                        )}
+                        {ref.last_error && (
+                          <div className="text-red-300 text-xs truncate" title={ref.last_error}>
+                            error: {ref.last_error}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {refs.length === 0 && (
+                <div className="text-center text-gray-500 py-12">
+                  No reference images found
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -535,6 +1172,45 @@ export default function AdminImagesPage() {
             )}
             <button
               onClick={() => setFullscreenImage(null)}
+              className="absolute top-4 right-4 text-white text-2xl hover:text-gray-300"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Ref Modal */}
+      {fullscreenRef && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+          onClick={() => setFullscreenRef(null)}
+        >
+          <div className="relative h-full flex gap-4 items-center">
+            {showGenerationInfo && fullscreenRef.generatedImage ? (
+              <>
+                {/* Reference image */}
+                <img
+                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${fullscreenRef.filename}`}
+                  alt="Reference"
+                  className="h-full object-contain"
+                />
+                {/* Generated image */}
+                <img
+                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/drawing-images/${fullscreenRef.generatedImage.storage_path}`}
+                  alt="Generated"
+                  className="h-full object-contain"
+                />
+              </>
+            ) : (
+              <img
+                src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${fullscreenRef.filename}`}
+                alt={fullscreenRef.filename}
+                className="max-w-full max-h-screen object-contain"
+              />
+            )}
+            <button
+              onClick={() => setFullscreenRef(null)}
               className="absolute top-4 right-4 text-white text-2xl hover:text-gray-300"
             >
               ✕

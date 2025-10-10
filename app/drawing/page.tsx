@@ -33,7 +33,8 @@ export default function DrawingPractice() {
   const [category, setCategory] = useState<string>('full-body');
   const [gender, setGender] = useState<string>('female');
   const [clothing, setClothing] = useState<string>('minimal');
-  const [imageCount, setImageCount] = useState(1);
+  const [imageCount, setImageCount] = useState(10);
+  const [imageSource, setImageSource] = useState<'generated' | 'references'>('references');
 
   // Session tracking
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
@@ -103,7 +104,10 @@ export default function DrawingPractice() {
     setIsLoading(true);
     try {
       let sessionImages;
-      if (alwaysGenerateNew) {
+      if (imageSource === 'references') {
+        // Use reference images from drawing_refs table
+        sessionImages = await imagePoolService.getRefsForSession(imageCount, category, gender, clothing);
+      } else if (alwaysGenerateNew) {
         // Force generation of new images, skip pool
         sessionImages = await imagePoolService.generateImages(imageCount, category, gender, clothing);
       } else {
@@ -261,6 +265,25 @@ export default function DrawingPractice() {
             )}
 
             <div className="flex flex-col items-center gap-2">
+              <div className="text-sm text-gray-500">source</div>
+              <div className="flex justify-center gap-2">
+                {['generated', 'references'].map(source => (
+                  <button
+                    key={source}
+                    onClick={() => setImageSource(source as 'generated' | 'references')}
+                    className={`px-4 py-2 text-sm border border-gray-400 ${
+                      imageSource === source
+                        ? 'bg-black text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {source}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
               <div className="text-sm text-gray-500">count</div>
               <div className="flex justify-center gap-2">
                 {[1, 3, 10, 20, 30].map(count => {
@@ -329,7 +352,11 @@ export default function DrawingPractice() {
           {currentImage && (
             <div className="flex-1 min-h-0 flex items-center justify-center">
               <img
-                src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/drawing-images/${currentImage.storage_path}`}
+                src={
+                  imageSource === 'references'
+                    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${currentImage.filename}`
+                    : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/drawing-images/${currentImage.storage_path}`
+                }
                 alt="Drawing reference"
                 className="max-w-full max-h-full object-contain"
               />

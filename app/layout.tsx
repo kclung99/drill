@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   title: "drill",
   description: "Your all-in-one practice toolbox for music and art",
   icons: {
-    icon: "/d.svg",
+    icon: "/d-square.png",
   },
 };
 
