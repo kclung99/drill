@@ -58,26 +58,26 @@ export default function SettingsPage() {
             <h2 className="text-sm text-gray-500">heatmap targets</h2>
 
             <div className="flex items-center justify-between">
-              <label className="text-sm text-gray-600">music daily target</label>
+              <label className="text-sm text-gray-500">music daily target</label>
               <input
                 type="number"
                 min="1"
                 max="10"
                 value={settings.musicDailyTarget}
                 onChange={(e) => setSettings({ ...settings, musicDailyTarget: parseInt(e.target.value) || 1 })}
-                className="w-20 px-3 py-2 text-sm border border-gray-400 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-20 px-3 py-2 text-sm border border-gray-400 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
-              <label className="text-sm text-gray-600">drawing daily target</label>
+              <label className="text-sm text-gray-500">drawing daily target</label>
               <input
                 type="number"
                 min="1"
                 max="10"
                 value={settings.drawingDailyTarget}
                 onChange={(e) => setSettings({ ...settings, drawingDailyTarget: parseInt(e.target.value) || 1 })}
-                className="w-20 px-3 py-2 text-sm border border-gray-400 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-20 px-3 py-2 text-sm border border-gray-400 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -87,38 +87,38 @@ export default function SettingsPage() {
             <h2 className="text-sm text-gray-500">session validation (minimum thresholds)</h2>
 
             <div className="flex items-center justify-between">
-              <label className="text-sm text-gray-600">music session duration (minutes)</label>
+              <label className="text-sm text-gray-500">music session duration (minutes)</label>
               <input
                 type="number"
                 min="1"
                 max="60"
                 value={settings.minMusicDurationMinutes}
                 onChange={(e) => setSettings({ ...settings, minMusicDurationMinutes: parseInt(e.target.value) || 1 })}
-                className="w-20 px-3 py-2 text-sm border border-gray-400 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-20 px-3 py-2 text-sm border border-gray-400 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
-              <label className="text-sm text-gray-600">drawing session refs (count)</label>
+              <label className="text-sm text-gray-500">drawing session refs (count)</label>
               <input
                 type="number"
                 min="1"
                 max="100"
                 value={settings.minDrawingRefs}
                 onChange={(e) => setSettings({ ...settings, minDrawingRefs: parseInt(e.target.value) || 1 })}
-                className="w-20 px-3 py-2 text-sm border border-gray-400 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-20 px-3 py-2 text-sm border border-gray-400 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
-              <label className="text-sm text-gray-600">drawing session duration (seconds per ref)</label>
+              <label className="text-sm text-gray-500">drawing session duration (seconds per ref)</label>
               <input
                 type="number"
                 min="10"
                 max="600"
                 value={settings.minDrawingDurationSeconds}
                 onChange={(e) => setSettings({ ...settings, minDrawingDurationSeconds: parseInt(e.target.value) || 10 })}
-                className="w-20 px-3 py-2 text-sm border border-gray-400 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-20 px-3 py-2 text-sm border border-gray-400 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -128,11 +128,11 @@ export default function SettingsPage() {
             <h2 className="text-sm text-gray-500">timezone</h2>
 
             <div className="flex items-center justify-between">
-              <label className="text-sm text-gray-600">UTC offset (hours)</label>
+              <label className="text-sm text-gray-500">UTC offset (hours)</label>
               <select
                 value={settings.timezoneOffset}
                 onChange={(e) => setSettings({ ...settings, timezoneOffset: parseInt(e.target.value) })}
-                className="px-3 py-2 text-sm border border-gray-400 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-2 text-sm border border-gray-400 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {Array.from({ length: 25 }, (_, i) => i - 12).map(offset => (
                   <option key={offset} value={offset}>
@@ -144,11 +144,11 @@ export default function SettingsPage() {
           </div>
 
           {/* Save Button */}
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col items-center gap-2">
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="px-4 py-2 text-sm bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="text-blue-500 text-sm lowercase hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? 'saving...' : 'save'}
             </button>

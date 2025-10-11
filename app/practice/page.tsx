@@ -346,8 +346,8 @@ export default function PracticeMode() {
                         sessionDuration === duration
                           ? isValid
                             ? 'bg-black text-white'
-                            : 'bg-blue-600 text-white'
-                          : 'bg-white text-gray-600 hover:bg-gray-100'
+                            : 'bg-gray-300 text-gray-600'
+                          : 'text-gray-600 hover:bg-gray-100'
                       }`}
                       title={!isValid ? "Won't count toward heatmap" : undefined}
                     >
@@ -365,7 +365,7 @@ export default function PracticeMode() {
                   className={`px-4 py-2 text-sm border border-gray-400 ${
                     sessionConfig.mode === 'chordTypes'
                       ? 'bg-black text-white'
-                      : 'bg-white text-gray-600 hover:bg-gray-100'
+                      : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
                   types
@@ -375,7 +375,7 @@ export default function PracticeMode() {
                   className={`px-4 py-2 text-sm border border-gray-400 ${
                     sessionConfig.mode === 'scales'
                       ? 'bg-black text-white'
-                      : 'bg-white text-gray-600 hover:bg-gray-100'
+                      : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
                   scales
@@ -399,7 +399,7 @@ export default function PracticeMode() {
                     className={`px-3 py-2 text-sm border border-gray-400 ${
                       sessionConfig.chordTypes.includes(chordType.id)
                         ? 'bg-black text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                        : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     {chordType.name}
@@ -424,7 +424,7 @@ export default function PracticeMode() {
                     className={`px-3 py-2 text-sm border border-gray-400 ${
                       sessionConfig.scales.includes(scale.id)
                         ? 'bg-black text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                        : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     {scale.name}
@@ -437,24 +437,24 @@ export default function PracticeMode() {
               <div className="text-sm text-gray-500">inversions</div>
               <div className="flex justify-center gap-2">
                 <button
-                  onClick={() => setSessionConfig(prev => ({ ...prev, includeInversions: false }))}
-                  className={`px-4 py-2 text-sm border border-gray-400 ${
-                    !sessionConfig.includeInversions
-                      ? 'bg-black text-white'
-                      : 'bg-white text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  no
-                </button>
-                <button
                   onClick={() => setSessionConfig(prev => ({ ...prev, includeInversions: true }))}
                   className={`px-4 py-2 text-sm border border-gray-400 ${
                     sessionConfig.includeInversions
                       ? 'bg-black text-white'
-                      : 'bg-white text-gray-600 hover:bg-gray-100'
+                      : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
                   yes
+                </button>
+                <button
+                  onClick={() => setSessionConfig(prev => ({ ...prev, includeInversions: false }))}
+                  className={`px-4 py-2 text-sm border border-gray-400 ${
+                    !sessionConfig.includeInversions
+                      ? 'bg-black text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  no
                 </button>
               </div>
             </div>
@@ -466,7 +466,7 @@ export default function PracticeMode() {
                   (sessionConfig.mode === 'chordTypes' && sessionConfig.chordTypes.length === 0) ||
                   (sessionConfig.mode === 'scales' && sessionConfig.scales.length === 0)
                 }
-                className="text-blue-600 underline text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-blue-500 text-sm lowercase hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 start
               </button>
@@ -500,26 +500,20 @@ export default function PracticeMode() {
               {finalEffectiveChords}
             </div>
             {isNewPB && (
-              <div className="text-green-600 font-semibold text-lg">new pb 🎉</div>
+              <div className="text-green-600 text-sm">new pb 🎉</div>
             )}
           </div>
 
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex gap-6 text-sm text-gray-600">
-              <div>{sessionMetrics.correctChords} chords</div>
-              <div>{sessionMetrics.chordAccuracy.toFixed(0)}% accuracy</div>
-              <div>{sessionMetrics.avgTimePerChord.toFixed(1)}s avg</div>
-            </div>
-
-            <div className="flex items-center gap-4 text-sm text-gray-600">
-              {pbEffectiveChords > 0 && <div>pb: {pbEffectiveChords}</div>}
-              {historicalSessions.length > 0 && (
-                <>
-                  {pbEffectiveChords > 0 && <div>·</div>}
-                  <div>top {finalPercentile}% ({betterThanCount}/{historicalSessions.length})</div>
-                </>
-              )}
-            </div>
+          <div className="flex flex-col items-start gap-1 text-sm text-gray-500 font-mono whitespace-pre">
+            {pbEffectiveChords > 0 && (
+              <div>{'pb         : '}{pbEffectiveChords}</div>
+            )}
+            {historicalSessions.length > 0 && (
+              <div>{'percentile : '}{finalPercentile}% ({betterThanCount}/{historicalSessions.length})</div>
+            )}
+            <div>{'chords     : '}{sessionMetrics.correctChords}</div>
+            <div>{'accuracy   : '}{sessionMetrics.chordAccuracy.toFixed(0)}%</div>
+            <div>{'avg        : '}{sessionMetrics.avgTimePerChord.toFixed(1)}s</div>
           </div>
 
           <div className="flex gap-4 text-sm">
@@ -529,7 +523,7 @@ export default function PracticeMode() {
                 setSessionResults([]);
                 startSession();
               }}
-              className="text-blue-600 hover:underline"
+              className="text-blue-500 lowercase hover:underline"
             >
               again
             </button>
@@ -539,7 +533,7 @@ export default function PracticeMode() {
                 setSessionResults([]);
                 setIsSessionActive(false);
               }}
-              className="text-blue-600 hover:underline"
+              className="text-blue-500 lowercase hover:underline"
             >
               back
             </button>
@@ -557,43 +551,17 @@ export default function PracticeMode() {
 
         <div className="flex items-center gap-4 text-sm text-gray-500">
           <div>{Math.floor(sessionTimeRemaining / 60000)}:{((sessionTimeRemaining % 60000) / 1000).toFixed(0).padStart(2, '0')}</div>
-          <div>·</div>
-          <div>{totalChordsAnswered} answered</div>
-          <div>·</div>
-          <div>{currentAttempts} attempts</div>
-        </div>
-
-        <div className="flex flex-col items-center gap-2 text-sm min-h-[60px] justify-center">
-          {currentSessionStats ? (
+          {currentSessionStats && (
             <>
-              <div className="flex items-center gap-4 text-gray-600">
-                <div>
-                  <span className="font-semibold text-blue-600">{currentSessionStats.currentEffectiveChords}</span> effective
-                </div>
-                {pbEffectiveChords > 0 && (
-                  <>
-                    <div>·</div>
-                    <div>pb: {pbEffectiveChords}</div>
-                  </>
-                )}
-                {currentSessionStats.projectedFinal > 0 && (
-                  <>
-                    <div>·</div>
-                    <div className={currentSessionStats.projectedFinal > pbEffectiveChords ? 'text-green-600' : ''}>
-                      proj: {currentSessionStats.projectedFinal}
-                    </div>
-                  </>
-                )}
-              </div>
-              {currentSessionStats.totalHistoricalSessions > 0 && (
-                <div className="text-xs text-gray-500">
-                  top {currentSessionStats.percentile}% ({currentSessionStats.betterThanCount}/{currentSessionStats.totalHistoricalSessions})
+              <div>effective: {currentSessionStats.currentEffectiveChords}</div>
+              {currentSessionStats.projectedFinal > 0 && (
+                <div className={currentSessionStats.projectedFinal > pbEffectiveChords ? 'text-blue-500' : 'text-red-500'}>
+                  proj: {currentSessionStats.projectedFinal}
                 </div>
               )}
             </>
-          ) : (
-            <div className="text-gray-400 text-sm">N/A</div>
           )}
+          {pbEffectiveChords > 0 && <div>pb: {pbEffectiveChords}</div>}
         </div>
 
         <div className="flex flex-col items-center gap-4">
@@ -615,16 +583,26 @@ export default function PracticeMode() {
         </div>
 
         <div className={`text-2xl font-bold ${
-          isCorrect ? 'text-green-600' : 'text-gray-400'
+          isCorrect ? 'text-green-600' : 'text-gray-500'
         }`}>
-          {currentChord || '-'}
+          {currentChord || '\u00A0'}
         </div>
 
-        <div>
+        <div className="flex flex-col items-center gap-4">
           <Piano
             pressedKeys={pressedKeys}
             targetChordKeys={showChordNotes ? new Set(getChordMidiNotes(targetChord)) : new Set()}
           />
+          <button
+            onClick={() => {
+              setIsSessionActive(false);
+              setIsSessionComplete(false);
+              setSessionResults([]);
+            }}
+            className="text-blue-500 text-sm lowercase hover:underline"
+          >
+            stop
+          </button>
         </div>
       </div>
     </div>

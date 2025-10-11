@@ -40,18 +40,17 @@ export default function HabitTracker() {
     const drawingComplete = dayData.drawingSessions >= drawingTarget;
 
     if (filterMode === 'music') {
-      return musicComplete ? 'bg-blue-500' : 'bg-gray-100';
+      return musicComplete ? 'bg-gray-300' : 'border border-gray-300';
     }
 
     if (filterMode === 'drawing') {
-      return drawingComplete ? 'bg-red-500' : 'bg-gray-100';
+      return drawingComplete ? 'bg-gray-300' : 'border border-gray-300';
     }
 
-    // Combined view - simplified 3 colors
-    if (musicComplete && drawingComplete) return 'bg-purple-500'; // Both
-    if (musicComplete) return 'bg-blue-500'; // Music only
-    if (drawingComplete) return 'bg-red-500'; // Drawing only
-    return 'bg-gray-100'; // None
+    // Combined view
+    if (musicComplete && drawingComplete) return 'bg-black'; // Both
+    if (musicComplete || drawingComplete) return 'bg-gray-300'; // Either one
+    return 'border border-gray-300'; // None
   };
 
   // Only calculate these on client to avoid hydration mismatch
@@ -113,18 +112,12 @@ export default function HabitTracker() {
         </div>
 
         {/* Today's Progress */}
-        <div className="flex gap-4 text-sm">
+        <div className="flex gap-4 text-sm text-gray-500">
           <div>
-            <span className="font-medium text-black">music:</span>
-            <span className="text-gray-500 ml-1">
-              {todayData.musicSessions}/{userSettings?.musicDailyTarget || 2}
-            </span>
+            music: {todayData.musicSessions}/{userSettings?.musicDailyTarget || 2}
           </div>
           <div>
-            <span className="font-medium text-black">drawing:</span>
-            <span className="text-gray-500 ml-1">
-              {todayData.drawingSessions}/{userSettings?.drawingDailyTarget || 2}
-            </span>
+            drawing: {todayData.drawingSessions}/{userSettings?.drawingDailyTarget || 2}
           </div>
         </div>
       </div>
@@ -150,9 +143,9 @@ export default function HabitTracker() {
                     <div
                       key={date}
                       className={`
-                        w-3 h-3 rounded-none transition-all hover:ring-2 hover:ring-gray-400
+                        w-3 h-3 rounded-none transition-all hover:ring-1 hover:ring-gray-400
                         ${currentYearDate ? getIntensityClass(dayData) : 'bg-gray-50'}
-                        ${isToday ? 'ring-2 ring-blue-400' : ''}
+                        ${isToday ? 'ring-2 ring-blue-500' : ''}
                         cursor-pointer
                       `}
                       title={currentYearDate ? `${date}: ${dayData.musicSessions} music, ${dayData.drawingSessions} drawing` : date}

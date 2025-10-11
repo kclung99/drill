@@ -31,7 +31,7 @@ interface DrawingRef {
 
 export default function AdminImagesPage() {
   const router = useRouter();
-  const { isAdmin } = useAuth();
+  const { isAdmin, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
 
   // View mode: 'generated' or 'refs'
@@ -63,16 +63,22 @@ export default function AdminImagesPage() {
   const [refGender, setRefGender] = useState<string>('female');
   const [showGenerationInfo, setShowGenerationInfo] = useState<boolean>(false);
 
+  // Modal state
+  const [showFilters, setShowFilters] = useState(false);
+  const [showActions, setShowActions] = useState(false);
+
   const imagePoolService = new ImagePoolService();
 
-  // Check admin access
+  // Check admin access - wait for auth to load before redirecting
   useEffect(() => {
+    if (authLoading) return; // Wait for auth to finish loading
+
     if (!isAdmin) {
       router.push('/');
-      return;
+    } else {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [isAdmin, router]);
+  }, [authLoading, isAdmin, router]);
 
   // Load images when filters change
   useEffect(() => {
@@ -565,33 +571,10 @@ export default function AdminImagesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <NavBar currentPage="home" showMidiStatus={false} />
+      <NavBar currentPage="admin" showMidiStatus={false} />
 
       <div className="p-8">
         <div className="max-w-7xl mx-auto">
-          {/* View Mode Toggle */}
-          <div className="mb-6 flex justify-center gap-2">
-            <button
-              onClick={() => setViewMode('generated')}
-              className={`px-6 py-3 text-sm font-medium border border-gray-400 ${
-                viewMode === 'generated'
-                  ? 'bg-black text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              Generated Images
-            </button>
-            <button
-              onClick={() => setViewMode('refs')}
-              className={`px-6 py-3 text-sm font-medium border border-gray-400 ${
-                viewMode === 'refs'
-                  ? 'bg-black text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              Reference Images
-            </button>
-          </div>
 
           {viewMode === 'generated' ? (
             <>
@@ -610,7 +593,7 @@ export default function AdminImagesPage() {
                         className={`px-4 py-2 text-sm border border-gray-400 ${
                           category === cat
                             ? 'bg-black text-white'
-                            : 'bg-white text-gray-600 hover:bg-gray-100'
+                            : 'text-gray-600 hover:bg-gray-100'
                         }`}
                       >
                         {cat}
@@ -629,7 +612,7 @@ export default function AdminImagesPage() {
                         className={`px-4 py-2 text-sm border border-gray-400 ${
                           gender === g
                             ? 'bg-black text-white'
-                            : 'bg-white text-gray-600 hover:bg-gray-100'
+                            : 'text-gray-600 hover:bg-gray-100'
                         }`}
                       >
                         {g}
@@ -649,7 +632,7 @@ export default function AdminImagesPage() {
                           className={`px-4 py-2 text-sm border border-gray-400 ${
                             clothing === c
                               ? 'bg-black text-white'
-                              : 'bg-white text-gray-600 hover:bg-gray-100'
+                              : 'text-gray-600 hover:bg-gray-100'
                           }`}
                         >
                           {c}
@@ -667,7 +650,7 @@ export default function AdminImagesPage() {
                   <select
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value as ImageModel)}
-                    className="px-3 py-2 border border-gray-400 text-sm"
+                    className="px-3 py-2 border border-gray-400 text-sm text-gray-500"
                   >
                     <option value="ideogram-ai/ideogram-v3-turbo">Ideogram v3 Turbo</option>
                     <option value="gemini-2.5-flash-image">Gemini 2.5 Flash</option>
@@ -870,14 +853,169 @@ export default function AdminImagesPage() {
             </>
           ) : (
             <>
-              {/* Reference Images View */}
-              <div className="mb-8 space-y-4">
-                <div className="flex items-start justify-center gap-8">
-                  {/* Left: Filters */}
-                  <div className="space-y-4">
+              {/* Floating Buttons */}
+              <div className="fixed bottom-8 right-8 z-40 flex gap-4">
+                <button
+                  onClick={() => setShowActions(true)}
+                  className="text-blue-500 text-sm lowercase hover:underline"
+                >
+                  action({selectedRefIds.size})
+                </button>
+                <button
+                  onClick={() => setShowFilters(true)}
+                  className="text-blue-500 text-sm lowercase hover:underline"
+                >
+                  filters
+                </button>
+              </div>
+
+              {/* Action Modal */}
+              {showActions && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                  onClick={() => setShowActions(false)}
+                >
+                  <div
+                    className="bg-gray-50 max-w-2xl w-full max-h-[80vh] overflow-y-auto p-8 space-y-6 flex flex-col items-center"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="space-y-6 w-full max-w-md">
+                      <div className="text-sm text-gray-500 text-center">
+                        {selectedRefIds.size} image(s) selected
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <div className="text-sm text-gray-500 text-center">selection</div>
+                        <div className="flex gap-4 justify-center">
+                          <button
+                            onClick={selectAllRefs}
+                            className="text-sm text-blue-500 lowercase hover:underline"
+                          >
+                            select-all
+                          </button>
+                          <button
+                            onClick={deselectAllRefs}
+                            className="text-sm text-blue-500 lowercase hover:underline"
+                          >
+                            deselect-all
+                          </button>
+                        </div>
+                      </div>
+
+                      {selectedRefIds.size > 0 && (
+                        <>
+                          <div className="flex flex-col gap-2">
+                            <div className="text-sm text-gray-500 text-center">model</div>
+                            <div className="flex justify-center">
+                              <select
+                                value={selectedModel}
+                                onChange={(e) => setSelectedModel(e.target.value as ImageModel)}
+                                className="px-3 py-2 border border-gray-400 text-sm text-gray-500"
+                              >
+                                <option value="google/nano-banana">Nano Banana</option>
+                                <option value="gemini-2.5-flash-image">Gemini 2.5 Flash</option>
+                                <option value="black-forest-labs/flux-kontext-pro">FLUX Kontext Pro</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-2">
+                            <div className="text-sm text-gray-500 text-center">generate</div>
+                            <div className="flex justify-center">
+                              <button
+                                onClick={() => {
+                                  handleExtractPosesFromRefs();
+                                  setShowActions(false);
+                                }}
+                                disabled={isExtractingRefs}
+                                className="text-sm text-blue-500 lowercase hover:underline disabled:opacity-50"
+                              >
+                                start
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-2">
+                            <div className="text-sm text-gray-500 text-center">delete</div>
+                            <div className="flex justify-center">
+                              <button
+                                onClick={() => {
+                                  handleDeleteRefs();
+                                  setShowActions(false);
+                                }}
+                                disabled={isExtractingRefs}
+                                className="text-sm text-blue-500 lowercase hover:underline disabled:opacity-50"
+                              >
+                                delete-selected
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {isExtractingRefs && (
+                        <div className="text-sm space-y-1">
+                          <div className="text-green-600 font-medium">
+                            Extracting poses...
+                          </div>
+                          <div className="text-gray-600">
+                            {extractionProgress.current} / {extractionProgress.total}
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-green-600 h-2 rounded-full transition-all"
+                              style={{
+                                width: `${(extractionProgress.current / extractionProgress.total) * 100}%`
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Filter Modal */}
+              {showFilters && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                  onClick={() => setShowFilters(false)}
+                >
+                  <div
+                    className="bg-gray-50 max-w-2xl w-full max-h-[80vh] overflow-y-auto p-8 space-y-6 flex flex-col items-center"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Filters */}
+                    <div className="space-y-6 w-full max-w-2xl">
                     <div className="flex flex-col gap-2">
-                      <div className="text-sm text-gray-500">body part</div>
-                      <div className="flex gap-2 flex-wrap">
+                      <div className="text-sm text-gray-500 text-center">view mode</div>
+                      <div className="flex gap-2 justify-center">
+                        <button
+                          onClick={() => setViewMode('generated')}
+                          className={`px-4 py-2 text-sm border border-gray-400 ${
+                            viewMode === 'generated'
+                              ? 'bg-black text-white'
+                              : 'text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          generated
+                        </button>
+                        <button
+                          onClick={() => setViewMode('refs')}
+                          className={`px-4 py-2 text-sm border border-gray-400 ${
+                            viewMode === 'refs'
+                              ? 'bg-black text-white'
+                              : 'text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          references
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <div className="text-sm text-gray-500 text-center">body part</div>
+                      <div className="flex gap-2 flex-wrap justify-center">
                         {['all', 'full-body', 'hands', 'feet', 'portraits'].map(part => (
                           <button
                             key={part}
@@ -885,7 +1023,7 @@ export default function AdminImagesPage() {
                             className={`px-4 py-2 text-sm border border-gray-400 ${
                               refBodyPart === part
                                 ? 'bg-black text-white'
-                                : 'bg-white text-gray-600 hover:bg-gray-100'
+                                : 'text-gray-600 hover:bg-gray-100'
                             }`}
                           >
                             {part.replace('-', ' ')}
@@ -895,8 +1033,8 @@ export default function AdminImagesPage() {
                     </div>
 
                     <div className="flex flex-col gap-2">
-                      <div className="text-sm text-gray-500">gender</div>
-                      <div className="flex gap-2">
+                      <div className="text-sm text-gray-500 text-center">gender</div>
+                      <div className="flex gap-2 justify-center">
                         {['all', 'male', 'female'].map(g => (
                           <button
                             key={g}
@@ -904,7 +1042,7 @@ export default function AdminImagesPage() {
                             className={`px-4 py-2 text-sm border border-gray-400 ${
                               refGender === g
                                 ? 'bg-black text-white'
-                                : 'bg-white text-gray-600 hover:bg-gray-100'
+                                : 'text-gray-600 hover:bg-gray-100'
                             }`}
                           >
                             {g}
@@ -914,14 +1052,14 @@ export default function AdminImagesPage() {
                     </div>
 
                     <div className="flex flex-col gap-2">
-                      <div className="text-sm text-gray-500">display</div>
-                      <div className="flex gap-2">
+                      <div className="text-sm text-gray-500 text-center">display</div>
+                      <div className="flex gap-2 justify-center">
                         <button
                           onClick={() => setShowGenerationInfo(true)}
                           className={`px-4 py-2 text-sm border border-gray-400 ${
                             showGenerationInfo
                               ? 'bg-black text-white'
-                              : 'bg-white text-gray-600 hover:bg-gray-100'
+                              : 'text-gray-600 hover:bg-gray-100'
                           }`}
                         >
                           with generation info
@@ -931,7 +1069,7 @@ export default function AdminImagesPage() {
                           className={`px-4 py-2 text-sm border border-gray-400 ${
                             !showGenerationInfo
                               ? 'bg-black text-white'
-                              : 'bg-white text-gray-600 hover:bg-gray-100'
+                              : 'text-gray-600 hover:bg-gray-100'
                           }`}
                         >
                           refs only
@@ -939,113 +1077,40 @@ export default function AdminImagesPage() {
                       </div>
                     </div>
 
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-gray-500 text-center">
                       {refs.length} reference image(s)
                       {loading && ' (loading...)'}
                     </div>
                   </div>
-
-                  {/* Middle: Model Selection */}
-                  <div className="space-y-4">
-                    <div className="flex flex-col gap-2">
-                      <div className="text-sm text-gray-500">model</div>
-                      <select
-                        value={selectedModel}
-                        onChange={(e) => setSelectedModel(e.target.value as ImageModel)}
-                        className="px-3 py-2 border border-gray-400 text-sm"
-                      >
-                        <option value="google/nano-banana">Nano Banana</option>
-                        <option value="gemini-2.5-flash-image">Gemini 2.5 Flash</option>
-                        <option value="black-forest-labs/flux-kontext-pro">FLUX Kontext Pro</option>
-                      </select>
                     </div>
                   </div>
-
-                  {/* Right: Actions */}
-                  <div className="space-y-4">
-                    <div className="flex flex-col gap-2">
-                      <div className="text-sm text-gray-500">selection</div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={selectAllRefs}
-                          className="px-4 py-2 bg-gray-600 text-white text-sm hover:bg-gray-700"
-                        >
-                          Select All
-                        </button>
-                        <button
-                          onClick={deselectAllRefs}
-                          className="px-4 py-2 bg-gray-600 text-white text-sm hover:bg-gray-700"
-                        >
-                          Deselect All
-                        </button>
-                      </div>
-                    </div>
-
-                    {selectedRefIds.size > 0 && (
-                      <div className="flex flex-col gap-2">
-                        <div className="text-sm text-gray-500">selected ({selectedRefIds.size})</div>
-                        <div className="flex flex-col gap-2">
-                          <button
-                            onClick={handleExtractPosesFromRefs}
-                            disabled={isExtractingRefs}
-                            className="px-4 py-2 bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50"
-                          >
-                            {isExtractingRefs ? 'Extracting...' : 'Extract Poses'}
-                          </button>
-                          <button
-                            onClick={handleDeleteRefs}
-                            disabled={isExtractingRefs}
-                            className="px-4 py-2 bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {isExtractingRefs && (
-                      <div className="text-sm space-y-1">
-                        <div className="text-green-600 font-medium">
-                          Extracting poses...
-                        </div>
-                        <div className="text-gray-600">
-                          {extractionProgress.current} / {extractionProgress.total}
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-green-600 h-2 rounded-full transition-all"
-                            style={{
-                              width: `${(extractionProgress.current / extractionProgress.total) * 100}%`
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="text-sm text-gray-500">
-                      {refs.length} reference image(s)
-                      {loading && ' (loading...)'}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              )}
 
               {/* Reference Images Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {refs.map(ref => (
                   <div
                     key={ref.id}
-                    className="relative group border border-gray-300 bg-white"
+                    className="relative group"
                   >
-                    {/* Checkbox */}
-                    <div className="absolute top-2 left-2 z-10" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedRefIds.has(ref.id)}
-                        onChange={() => toggleRefSelect(ref.id)}
-                        className="w-5 h-5 rounded border-gray-400"
-                      />
+                    {/* Select button - only show on hover */}
+                    <div className="absolute top-3 left-3 z-30 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => toggleRefSelect(ref.id)}
+                        className="text-blue-500 text-xs lowercase hover:underline"
+                      >
+                        {selectedRefIds.has(ref.id) ? 'deselect' : 'select'}
+                      </button>
                     </div>
+
+                    {/* Selected indicator - center, hidden on hover */}
+                    {selectedRefIds.has(ref.id) && (
+                      <div className="absolute inset-0 flex items-center justify-center z-20 opacity-100 group-hover:opacity-0 transition-opacity pointer-events-none">
+                        <div className="text-blue-500 text-sm lowercase">
+                          selected
+                        </div>
+                      </div>
+                    )}
 
                     {/* Status badge - only show when generation info is enabled */}
                     {showGenerationInfo && (
@@ -1075,7 +1140,7 @@ export default function AdminImagesPage() {
 
                     {/* Image */}
                     <div
-                      className="aspect-square relative overflow-hidden cursor-pointer"
+                      className={`aspect-square relative overflow-hidden cursor-pointer ${selectedRefIds.has(ref.id) ? 'opacity-20' : ''}`}
                       onClick={() => setFullscreenRef(ref)}
                     >
                       {showGenerationInfo && ref.generatedImage ? (
@@ -1106,7 +1171,13 @@ export default function AdminImagesPage() {
                     </div>
 
                     {/* Metadata overlay on hover */}
-                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-75 transition-all duration-200 flex items-end opacity-0 group-hover:opacity-100 pointer-events-none">
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-75 transition-all duration-200 flex flex-col justify-between opacity-0 group-hover:opacity-100 pointer-events-none">
+                      {/* Select button area - aligned to top */}
+                      <div className="p-3">
+                        {/* Spacer for select button */}
+                      </div>
+
+                      {/* Metadata - aligned to bottom */}
                       <div className="p-3 text-white text-xs space-y-1 w-full">
                         <div className="font-medium truncate">{ref.filename}</div>
                         {ref.body_part && <div>part: {ref.body_part.replace('_', ' ')}</div>}
@@ -1144,7 +1215,7 @@ export default function AdminImagesPage() {
       {/* Fullscreen Image Modal */}
       {fullscreenImage && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-gray-50 z-50 flex items-center justify-center p-4"
           onClick={() => setFullscreenImage(null)}
         >
           <div className="relative h-full flex gap-4 items-center">
@@ -1170,12 +1241,6 @@ export default function AdminImagesPage() {
                 className="max-w-full max-h-screen object-contain"
               />
             )}
-            <button
-              onClick={() => setFullscreenImage(null)}
-              className="absolute top-4 right-4 text-white text-2xl hover:text-gray-300"
-            >
-              ✕
-            </button>
           </div>
         </div>
       )}
@@ -1183,7 +1248,7 @@ export default function AdminImagesPage() {
       {/* Fullscreen Ref Modal */}
       {fullscreenRef && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-gray-50 z-50 flex items-center justify-center p-4"
           onClick={() => setFullscreenRef(null)}
         >
           <div className="relative h-full flex gap-4 items-center">
@@ -1209,12 +1274,6 @@ export default function AdminImagesPage() {
                 className="max-w-full max-h-screen object-contain"
               />
             )}
-            <button
-              onClick={() => setFullscreenRef(null)}
-              className="absolute top-4 right-4 text-white text-2xl hover:text-gray-300"
-            >
-              ✕
-            </button>
           </div>
         </div>
       )}

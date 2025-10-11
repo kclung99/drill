@@ -47,11 +47,11 @@ export default function LiveMode() {
       <div className="flex-1 p-8 flex flex-col items-center justify-center gap-8">
 
         <div className="flex flex-col items-center gap-4">
-          <div className="text-6xl font-bold text-blue-600">
-            {currentChord || '-'}
+          <div className="text-6xl font-bold text-blue-600 h-[72px] flex items-center">
+            {currentChord || '\u00A0'}
           </div>
-          <div className="text-lg text-gray-500">
-            {noteNames || '-'}
+          <div className="text-lg text-gray-500 h-[28px] flex items-center">
+            {noteNames || '\u00A0'}
           </div>
         </div>
 

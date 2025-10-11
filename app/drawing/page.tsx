@@ -215,7 +215,7 @@ export default function DrawingPractice() {
                     className={`px-4 py-2 text-sm border border-gray-400 ${
                       category === cat
                         ? 'bg-black text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                        : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     {cat}
@@ -234,7 +234,7 @@ export default function DrawingPractice() {
                     className={`px-4 py-2 text-sm border border-gray-400 ${
                       gender === g
                         ? 'bg-black text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                        : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     {g}
@@ -254,7 +254,7 @@ export default function DrawingPractice() {
                       className={`px-4 py-2 text-sm border border-gray-400 ${
                         clothing === c
                           ? 'bg-black text-white'
-                          : 'bg-white text-gray-600 hover:bg-gray-100'
+                          : 'text-gray-600 hover:bg-gray-100'
                       }`}
                     >
                       {c}
@@ -264,7 +264,7 @@ export default function DrawingPractice() {
               </div>
             )}
 
-            <div className="flex flex-col items-center gap-2">
+            {/* <div className="flex flex-col items-center gap-2">
               <div className="text-sm text-gray-500">source</div>
               <div className="flex justify-center gap-2">
                 {['generated', 'references'].map(source => (
@@ -274,14 +274,14 @@ export default function DrawingPractice() {
                     className={`px-4 py-2 text-sm border border-gray-400 ${
                       imageSource === source
                         ? 'bg-black text-white'
-                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                        : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     {source}
                   </button>
                 ))}
               </div>
-            </div>
+            </div> */}
 
             <div className="flex flex-col items-center gap-2">
               <div className="text-sm text-gray-500">count</div>
@@ -296,8 +296,8 @@ export default function DrawingPractice() {
                         imageCount === count
                           ? isValid
                             ? 'bg-black text-white'
-                            : 'bg-blue-600 text-white'
-                          : 'bg-white text-gray-600 hover:bg-gray-100'
+                            : 'bg-gray-300 text-gray-600'
+                          : 'text-gray-600 hover:bg-gray-100'
                       }`}
                       title={!isValid ? "Won't count toward heatmap" : undefined}
                     >
@@ -313,7 +313,7 @@ export default function DrawingPractice() {
               <div className="flex justify-center gap-2">
                 {[30, 60, 90, 120, 'inf'].map(dur => {
                   const isValid = userSettings
-                    ? (dur === 'inf' || dur >= userSettings.minDrawingDurationSeconds)
+                    ? (dur !== 'inf' && dur >= userSettings.minDrawingDurationSeconds)
                     : true;
                   return (
                     <button
@@ -323,8 +323,8 @@ export default function DrawingPractice() {
                         duration === dur
                           ? isValid
                             ? 'bg-black text-white'
-                            : 'bg-blue-600 text-white'
-                          : 'bg-white text-gray-600 hover:bg-gray-100'
+                            : 'bg-gray-300 text-gray-600'
+                          : 'text-gray-600 hover:bg-gray-100'
                       }`}
                       title={!isValid ? "Won't count toward heatmap" : undefined}
                     >
@@ -339,7 +339,7 @@ export default function DrawingPractice() {
               <button
                 onClick={startSession}
                 disabled={isLoading}
-                className="text-blue-600 underline text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-blue-500 text-sm lowercase hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? 'loading...' : 'start'}
               </button>
@@ -367,32 +367,26 @@ export default function DrawingPractice() {
             <div>{currentImageIndex + 1}/{images.length}</div>
             {duration !== 'inf' && (
               <>
-                <div>·</div>
                 <div>{Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
-                <div>·</div>
                 <button
                   onClick={togglePause}
-                  className="text-blue-600 hover:underline"
+                  className="text-blue-500 lowercase hover:underline"
                 >
                   {isPaused ? 'resume' : 'pause'}
                 </button>
               </>
             )}
             {duration === 'inf' && (
-              <>
-                <div>·</div>
-                <button
-                  onClick={goToNext}
-                  className="text-blue-600 hover:underline"
-                >
-                  next
-                </button>
-              </>
+              <button
+                onClick={goToNext}
+                className="text-blue-500 lowercase hover:underline"
+              >
+                next
+              </button>
             )}
-            <div>·</div>
             <button
               onClick={stopSession}
-              className="text-blue-600 hover:underline"
+              className="text-blue-500 lowercase hover:underline"
             >
               stop
             </button>

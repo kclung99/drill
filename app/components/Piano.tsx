@@ -31,13 +31,13 @@ const Piano: React.FC<PianoProps> = ({ pressedKeys, chordPlaybackKeys = new Set(
         const xPos = whiteKeyIndex * whiteKeyWidth;
 
         // Determine the color based on key state
-        let bgColor = 'bg-white hover:bg-gray-50';
+        let bgColor = 'hover:bg-gray-100';
         if (pressedKeys.has(midiNote)) {
           bgColor = 'bg-blue-300'; // User pressed keys (blue)
         } else if (chordPlaybackKeys.has(midiNote)) {
-          bgColor = 'bg-pink-200'; // Chord playback keys (light pink)
+          bgColor = 'bg-gray-300'; // Chord playback keys
         } else if (targetChordKeys.has(midiNote)) {
-          bgColor = 'bg-orange-300'; // Target chord keys (orange)
+          bgColor = 'bg-red-300'; // Target chord keys
         }
 
         keys.push(
@@ -84,13 +84,13 @@ const Piano: React.FC<PianoProps> = ({ pressedKeys, chordPlaybackKeys = new Set(
         }
 
         // Determine the color based on key state
-        let bgColor = 'bg-gray-900 hover:bg-gray-800';
+        let bgColor = 'bg-black hover:bg-gray-700';
         if (pressedKeys.has(midiNote)) {
-          bgColor = 'bg-blue-600'; // User pressed keys (darker blue)
+          bgColor = 'bg-blue-500'; // User pressed keys (darker blue)
         } else if (chordPlaybackKeys.has(midiNote)) {
-          bgColor = 'bg-pink-400'; // Chord playback keys (darker pink for black keys)
+          bgColor = 'bg-gray-600'; // Chord playback keys
         } else if (targetChordKeys.has(midiNote)) {
-          bgColor = 'bg-orange-500'; // Target chord keys (darker orange for black keys)
+          bgColor = 'bg-red-600'; // Target chord keys
         }
 
         keys.push(

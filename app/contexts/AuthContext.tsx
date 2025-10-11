@@ -7,44 +7,69 @@ import { User } from '@supabase/supabase-js';
 interface AuthContextType {
   user: User | null;
   isAdmin: boolean;
+  loading: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Check admin status ONCE and cache in memory
+let adminCheckCache: { userId: string; isAdmin: boolean } | null = null;
+
+async function checkAdminStatus(userId: string): Promise<boolean> {
+  // Return cached result if we already checked this user
+  if (adminCheckCache && adminCheckCache.userId === userId) {
+    return adminCheckCache.isAdmin;
+  }
+
+  // Query database once
+  try {
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('role')
+      .eq('user_id', userId)
+      .single();
+
+    const isAdmin = !error && data?.role === 'admin';
+
+    // Cache the result
+    adminCheckCache = { userId, isAdmin };
+
+    return isAdmin;
+  } catch {
+    return false;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    // Check session once on mount
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       setUser(user);
       if (user) {
-        console.log('🔍 Checking admin status for user:', user.id);
-        import('@/app/lib/adminAuth').then(({ isAdmin: checkAdmin }) => {
-          checkAdmin().then((admin) => {
-            console.log('✅ Admin check result:', admin);
-            setIsAdmin(admin);
-          });
-        });
-      } else {
-        setIsAdmin(false);
+        const admin = await checkAdminStatus(user.id);
+        setIsAdmin(admin);
       }
+      setLoading(false);
     });
 
+    // Listen for auth changes (login/logout only)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const newUser = session?.user || null;
       setUser(newUser);
 
-      // Check admin status
       if (newUser) {
-        console.log('🔍 Auth change - checking admin for:', newUser.id);
-        const { isAdmin: checkAdmin } = await import('@/app/lib/adminAuth');
-        const admin = await checkAdmin();
-        console.log('✅ Auth change - admin result:', admin);
+        // Check admin status once on sign in
+        const admin = await checkAdminStatus(newUser.id);
         setIsAdmin(admin);
       } else {
+        // Clear cache on sign out
+        adminCheckCache = null;
         setIsAdmin(false);
       }
 
@@ -55,9 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const { isMigrated: checkMigrated } = await import('@/app/services/localStorageService');
 
           if (!checkMigrated()) {
-            console.log('Migrating guest data to Supabase...');
             await migrateGuestData();
-            console.log('Migration complete');
           }
         } catch (error) {
           console.error('Failed to migrate guest data:', error);
@@ -79,11 +102,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    localStorage.removeItem('auth_token');
+    localStorage.clear();
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAdmin, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, isAdmin, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -77,13 +77,13 @@ export interface SessionConfig {
 }
 
 export const CHORD_TYPES = [
-  { id: 'maj', name: 'Major', suffix: '' }, // Just "C", not "CM"
-  { id: 'min', name: 'Minor', suffix: 'm' },
-  { id: 'dim', name: 'Diminished', suffix: 'dim' },
-  { id: 'maj7', name: 'Major 7th', suffix: 'maj7' },
-  { id: 'min7', name: 'Minor 7th', suffix: 'm7' },
-  { id: 'dom7', name: 'Dominant 7th', suffix: '7' },
-  { id: 'm7b5', name: 'Half Diminished', suffix: 'm7b5' }
+  { id: 'maj', name: 'major', suffix: '' }, // Just "C", not "CM"
+  { id: 'min', name: 'minor', suffix: 'm' },
+  { id: 'dim', name: 'diminished', suffix: 'dim' },
+  { id: 'maj7', name: 'major 7th', suffix: 'maj7' },
+  { id: 'min7', name: 'minor 7th', suffix: 'm7' },
+  { id: 'dom7', name: 'dominant 7th', suffix: '7' },
+  { id: 'm7b5', name: 'half diminished', suffix: 'm7b5' }
 ];
 
 export const SCALES = [

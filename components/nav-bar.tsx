@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/app/contexts/AuthContext';
 
 interface NavBarProps {
-  currentPage: 'home' | 'live' | 'chord' | 'reference' | 'settings';
+  currentPage: 'home' | 'live' | 'chord' | 'reference' | 'settings' | 'admin';
   showMidiStatus?: boolean;
   midiActive?: boolean;
 }
@@ -18,48 +18,48 @@ export function NavBar({ currentPage, showMidiStatus = false, midiActive = false
         <div className="flex-1 flex justify-start items-center gap-2">
           {showMidiStatus && (
             <>
-              <div className={`w-2 h-2 rounded-full ${midiActive ? 'bg-green-500' : 'bg-yellow-500'}`} />
-              <span className="text-sm text-gray-600">
+              {/* <div className={`w-2 h-2 rounded-full ${midiActive ? 'bg-green-500' : 'bg-yellow-500'}`} /> */}
+              <span className="text-sm text-gray-500">
                 {midiActive ? 'midi' : 'keyboard'}
               </span>
             </>
           )}
         </div>
-        <div className="flex justify-center gap-4">
+        <div className="flex justify-center gap-4 text-sm">
           <Link
             href="/"
-            className={`text-blue-600 font-medium ${currentPage === 'home' ? 'underline' : 'hover:underline'}`}
+            className={currentPage === 'home' ? 'text-black underline' : 'text-gray-500 hover:text-black'}
           >
             home
           </Link>
           <Link
             href="/live"
-            className={`text-blue-600 font-medium ${currentPage === 'live' ? 'underline' : 'hover:underline'}`}
+            className={currentPage === 'live' ? 'text-black underline' : 'text-gray-500 hover:text-black'}
           >
             live
           </Link>
           <Link
             href="/practice"
-            className={`text-blue-600 font-medium ${currentPage === 'chord' ? 'underline' : 'hover:underline'}`}
+            className={currentPage === 'chord' ? 'text-black underline' : 'text-gray-500 hover:text-black'}
           >
             chord
           </Link>
           <Link
             href="/drawing"
-            className={`text-blue-600 font-medium ${currentPage === 'reference' ? 'underline' : 'hover:underline'}`}
+            className={currentPage === 'reference' ? 'text-black underline' : 'text-gray-500 hover:text-black'}
           >
             reference
           </Link>
           <Link
             href="/settings"
-            className={`text-blue-600 font-medium ${currentPage === 'settings' ? 'underline' : 'hover:underline'}`}
+            className={currentPage === 'settings' ? 'text-black underline' : 'text-gray-500 hover:text-black'}
           >
             settings
           </Link>
           {isAdmin && (
             <Link
-              href="/admin/images"
-              className="text-red-600 font-medium hover:underline"
+              href="/admin"
+              className={currentPage === 'admin' ? 'text-black underline' : 'text-gray-500 hover:text-black'}
             >
               admin
             </Link>
@@ -69,10 +69,10 @@ export function NavBar({ currentPage, showMidiStatus = false, midiActive = false
           {user ? (
             <>
               <span className="text-sm text-gray-500">{user.user_metadata?.full_name || user.email}</span>
-              <span className="text-gray-400">/</span>
+              <span className="text-sm text-gray-500">/</span>
               <button
                 onClick={signOut}
-                className="text-sm text-gray-600 hover:underline"
+                className="text-sm text-gray-500 hover:text-black"
               >
                 sign out
               </button>
@@ -80,10 +80,10 @@ export function NavBar({ currentPage, showMidiStatus = false, midiActive = false
           ) : (
             <>
               <span className="text-sm text-gray-500">guest</span>
-              <span className="text-gray-400">/</span>
+              <span className="text-sm text-gray-500">/</span>
               <button
                 onClick={signIn}
-                className="text-sm text-gray-600 hover:underline"
+                className="text-sm text-gray-500 hover:text-black"
               >
                 sign in
               </button>
