@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useMidi } from '../hooks/useMidi';
 import Piano from '../components/Piano';
-import { detectChord, chordsMatch, chordsMatchMidi, getChordNotes, getChordMidiNotes, SessionConfig, CHORD_TYPES, SCALES, generateSessionChords } from '../utils/chordDetection';
+import { detectChord, chordsMatchMidi, getChordNotes, getChordMidiNotes, SessionConfig, CHORD_TYPES, SCALES, generateSessionChords } from '../utils/chordDetection';
 import { incrementSession } from '../utils/habitTracker';
 import { NavBar } from '@/components/nav-bar';
 import { UserSettings } from '@/app/services/settingsService';
@@ -48,6 +48,10 @@ export default function PracticeMode() {
   const [sessionTimeRemaining, setSessionTimeRemaining] = useState<number>(0);
   const [totalChordsAnswered, setTotalChordsAnswered] = useState(0);
 
+  // Session stats (PB and percentile)
+  const [pbEffectiveChords, setPbEffectiveChords] = useState<number>(0);
+  const [historicalSessions, setHistoricalSessions] = useState<any[]>([]);
+
   // Current chord state
   const [startTime, setStartTime] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -77,7 +81,7 @@ export default function PracticeMode() {
   const [lastAttemptKeys, setLastAttemptKeys] = useState<Set<number>>(new Set());
   const [hasAdvanced, setHasAdvanced] = useState(false);
 
-  const startSession = () => {
+  const startSession = async () => {
     const chords = generateSessionChords(sessionConfig);
     setSessionChords(chords);
     setCurrentChordIndex(0);
@@ -88,6 +92,24 @@ export default function PracticeMode() {
     setSessionStartTime(Date.now());
     setSessionTimeRemaining(sessionDuration * 60 * 1000); // convert minutes to ms
     startCurrentChord();
+
+    // Fetch historical sessions for PB and percentile tracking
+    const { fetchMatchingSessions } = await import('@/app/services/chordSessionStatsService');
+    const sessions = await fetchMatchingSessions({
+      durationMinutes: sessionDuration,
+      mode: sessionConfig.mode,
+      chordTypes: sessionConfig.chordTypes,
+      scales: sessionConfig.scales,
+      includeInversions: sessionConfig.includeInversions ?? true,
+    });
+
+    setHistoricalSessions(sessions);
+
+    if (sessions.length > 0) {
+      const effectiveChordsValues = sessions.map(s => s.effective_chords);
+      const pb = Math.max(...effectiveChordsValues);
+      setPbEffectiveChords(pb);
+    }
   };
 
   const startCurrentChord = () => {
@@ -126,13 +148,17 @@ export default function PracticeMode() {
         : 0;
       const correctTimes = sessionResults.filter(r => r.correctTime > 0).map(r => r.correctTime);
 
+      const accuracy = totalChordsAnswered > 0 ? (totalChordsAnswered / totalAttempts) * 100 : 0;
+      const effectiveChords = parseFloat((totalChordsAnswered * (accuracy / 100)).toFixed(2));
+
       const metrics = {
         totalChords: totalChordsAnswered,
         totalAttempts,
-        accuracy: totalChordsAnswered > 0 ? (totalChordsAnswered / totalAttempts) * 100 : 0,
+        accuracy,
         avgTimePerChord: avgCorrectTime / 1000, // convert to seconds
         fastestTime: correctTimes.length > 0 ? Math.min(...correctTimes) / 1000 : 0,
         slowestTime: correctTimes.length > 0 ? Math.max(...correctTimes) / 1000 : 0,
+        effectiveChords,
       };
 
       // Save to localStorage and queue for Supabase sync
@@ -143,6 +169,7 @@ export default function PracticeMode() {
             mode: sessionConfig.mode,
             chordTypes: sessionConfig.chordTypes,
             scales: sessionConfig.scales,
+            includeInversions: sessionConfig.includeInversions ?? true,
           },
           metrics,
           chordResults: sessionResults,
@@ -250,6 +277,38 @@ export default function PracticeMode() {
       slowestTime: correctTimes.length > 0 ? Math.max(...correctTimes) / 1000 : 0
     };
   }, [sessionResults, totalChordsAnswered]);
+
+  // Calculate current effective chords and stats during session
+  const currentSessionStats = useMemo(() => {
+    if (!isSessionActive || sessionResults.length === 0) return null;
+
+    const totalAttempts = sessionResults.reduce((sum, r) => sum + r.attempts, 0);
+    const accuracy = totalChordsAnswered > 0 ? (totalChordsAnswered / totalAttempts) * 100 : 0;
+    const currentEffectiveChords = parseFloat((totalChordsAnswered * (accuracy / 100)).toFixed(2));
+
+    // Calculate percentile
+    const betterThanCount = historicalSessions.filter(
+      s => currentEffectiveChords > s.effective_chords
+    ).length;
+    const percentile = historicalSessions.length > 0
+      ? Math.round((betterThanCount / historicalSessions.length) * 100)
+      : 100;
+
+    // Calculate projected final score
+    const elapsedMs = sessionStartTime ? Date.now() - sessionStartTime : 0;
+    const elapsedMinutes = elapsedMs / 60000;
+    const projectedFinal = elapsedMinutes > 0
+      ? parseFloat((currentEffectiveChords / elapsedMinutes * sessionDuration).toFixed(2))
+      : 0;
+
+    return {
+      currentEffectiveChords,
+      percentile,
+      betterThanCount,
+      totalHistoricalSessions: historicalSessions.length,
+      projectedFinal,
+    };
+  }, [isSessionActive, sessionResults, totalChordsAnswered, historicalSessions, sessionStartTime, sessionDuration]);
 
   if (!isSupported) {
     return (
@@ -420,19 +479,47 @@ export default function PracticeMode() {
 
   // Session Results UI
   if (isSessionComplete && sessionMetrics) {
+    const finalEffectiveChords = parseFloat((sessionMetrics.correctChords * (sessionMetrics.chordAccuracy / 100)).toFixed(2));
+    const isNewPB = finalEffectiveChords > pbEffectiveChords && pbEffectiveChords > 0;
+
+    // Recalculate percentile for final score
+    const betterThanCount = historicalSessions.filter(
+      s => finalEffectiveChords >= s.effective_chords
+    ).length;
+    const finalPercentile = historicalSessions.length > 0
+      ? Math.round((betterThanCount / historicalSessions.length) * 100)
+      : 100;
+
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <NavBar currentPage="chord" showMidiStatus={true} midiActive={activeMode === 'midi'} />
 
         <div className="flex-1 p-8 flex flex-col items-center justify-center gap-8">
-          <div className="text-4xl font-bold text-blue-600">
-            {sessionMetrics.chordAccuracy.toFixed(0)}%
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-6xl font-bold text-blue-600">
+              {finalEffectiveChords}
+            </div>
+            {isNewPB && (
+              <div className="text-green-600 font-semibold text-lg">new pb 🎉</div>
+            )}
           </div>
 
-          <div className="flex gap-8 text-sm text-gray-600">
-            <div>{sessionMetrics.correctChords} chords</div>
-            <div>{sessionMetrics.avgTimePerChord.toFixed(1)}s avg</div>
-            <div>{sessionMetrics.fastestTime.toFixed(1)}s best</div>
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex gap-6 text-sm text-gray-600">
+              <div>{sessionMetrics.correctChords} chords</div>
+              <div>{sessionMetrics.chordAccuracy.toFixed(0)}% accuracy</div>
+              <div>{sessionMetrics.avgTimePerChord.toFixed(1)}s avg</div>
+            </div>
+
+            <div className="flex items-center gap-4 text-sm text-gray-600">
+              {pbEffectiveChords > 0 && <div>pb: {pbEffectiveChords}</div>}
+              {historicalSessions.length > 0 && (
+                <>
+                  {pbEffectiveChords > 0 && <div>·</div>}
+                  <div>top {finalPercentile}% ({betterThanCount}/{historicalSessions.length})</div>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="flex gap-4 text-sm">
@@ -474,6 +561,39 @@ export default function PracticeMode() {
           <div>{totalChordsAnswered} answered</div>
           <div>·</div>
           <div>{currentAttempts} attempts</div>
+        </div>
+
+        <div className="flex flex-col items-center gap-2 text-sm min-h-[60px] justify-center">
+          {currentSessionStats ? (
+            <>
+              <div className="flex items-center gap-4 text-gray-600">
+                <div>
+                  <span className="font-semibold text-blue-600">{currentSessionStats.currentEffectiveChords}</span> effective
+                </div>
+                {pbEffectiveChords > 0 && (
+                  <>
+                    <div>·</div>
+                    <div>pb: {pbEffectiveChords}</div>
+                  </>
+                )}
+                {currentSessionStats.projectedFinal > 0 && (
+                  <>
+                    <div>·</div>
+                    <div className={currentSessionStats.projectedFinal > pbEffectiveChords ? 'text-green-600' : ''}>
+                      proj: {currentSessionStats.projectedFinal}
+                    </div>
+                  </>
+                )}
+              </div>
+              {currentSessionStats.totalHistoricalSessions > 0 && (
+                <div className="text-xs text-gray-500">
+                  top {currentSessionStats.percentile}% ({currentSessionStats.betterThanCount}/{currentSessionStats.totalHistoricalSessions})
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-gray-400 text-sm">N/A</div>
+          )}
         </div>
 
         <div className="flex flex-col items-center gap-4">

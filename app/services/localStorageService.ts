@@ -46,6 +46,7 @@ export interface ChordSessionConfig {
   mode: 'chordTypes' | 'scales';
   chordTypes: string[];
   scales: string[];
+  includeInversions: boolean;
 }
 
 export interface ChordSessionMetrics {
@@ -55,6 +56,7 @@ export interface ChordSessionMetrics {
   avgTimePerChord: number; // seconds
   fastestTime: number; // seconds
   slowestTime: number; // seconds
+  effectiveChords: number; // totalChords * (accuracy / 100), rounded to 2 decimals
 }
 
 export interface ChordSession {

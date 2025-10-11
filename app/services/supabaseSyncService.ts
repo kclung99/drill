@@ -29,12 +29,14 @@ interface ChordPracticeSessionRow {
   mode: 'chordTypes' | 'scales';
   chord_types: string[] | null;
   scales: string[] | null;
+  include_inversions: boolean;
   total_chords: number;
   total_attempts: number;
   accuracy: number;
   avg_time_per_chord: number;
   fastest_time: number;
   slowest_time: number;
+  effective_chords: number;
   chord_results: Record<string, unknown>[];
 }
 
@@ -82,12 +84,14 @@ export const queueChordSession = async (session: ChordSession): Promise<void> =>
     mode: session.config.mode,
     chord_types: session.config.mode === 'chordTypes' ? session.config.chordTypes : null,
     scales: session.config.mode === 'scales' ? session.config.scales : null,
+    include_inversions: session.config.includeInversions,
     total_chords: session.metrics.totalChords,
     total_attempts: session.metrics.totalAttempts,
     accuracy: session.metrics.accuracy,
     avg_time_per_chord: session.metrics.avgTimePerChord,
     fastest_time: session.metrics.fastestTime,
     slowest_time: session.metrics.slowestTime,
+    effective_chords: session.metrics.effectiveChords,
     chord_results: session.chordResults,
   });
 };
@@ -149,20 +153,29 @@ export const syncToSupabase = async (): Promise<SyncStatus> => {
 
     // Sync chord practice sessions
     if (chordItems.length > 0) {
-      const chordRows: ChordPracticeSessionRow[] = chordItems.map((item) => ({
-        user_id: user.id,
-        duration_minutes: item.data.duration_minutes as number,
-        mode: item.data.mode as 'chordTypes' | 'scales',
-        chord_types: item.data.chord_types as string[] | null,
-        scales: item.data.scales as string[] | null,
-        total_chords: item.data.total_chords as number,
-        total_attempts: item.data.total_attempts as number,
-        accuracy: item.data.accuracy as number,
-        avg_time_per_chord: item.data.avg_time_per_chord as number,
-        fastest_time: item.data.fastest_time as number,
-        slowest_time: item.data.slowest_time as number,
-        chord_results: item.data.chord_results as Record<string, unknown>[],
-      }));
+      const chordRows: ChordPracticeSessionRow[] = chordItems.map((item) => {
+        const totalChords = item.data.total_chords as number;
+        const accuracy = item.data.accuracy as number;
+        const includeInversions = item.data.include_inversions as boolean | undefined;
+        const effectiveChords = item.data.effective_chords as number | undefined;
+
+        return {
+          user_id: user.id,
+          duration_minutes: item.data.duration_minutes as number,
+          mode: item.data.mode as 'chordTypes' | 'scales',
+          chord_types: item.data.chord_types as string[] | null,
+          scales: item.data.scales as string[] | null,
+          include_inversions: includeInversions !== undefined ? includeInversions : false,
+          total_chords: totalChords,
+          total_attempts: item.data.total_attempts as number,
+          accuracy: accuracy,
+          avg_time_per_chord: item.data.avg_time_per_chord as number,
+          fastest_time: item.data.fastest_time as number,
+          slowest_time: item.data.slowest_time as number,
+          effective_chords: effectiveChords !== undefined ? effectiveChords : parseFloat((totalChords * (accuracy / 100)).toFixed(2)),
+          chord_results: item.data.chord_results as Record<string, unknown>[],
+        };
+      });
 
       const { error: chordError } = await supabase
         .from('chord_practice_sessions')
@@ -301,12 +314,14 @@ export const migrateGuestData = async (): Promise<void> => {
         mode: session.config.mode,
         chord_types: session.config.mode === 'chordTypes' ? session.config.chordTypes : null,
         scales: session.config.mode === 'scales' ? session.config.scales : null,
+        include_inversions: session.config.includeInversions || false,
         total_chords: session.metrics.totalChords,
         total_attempts: session.metrics.totalAttempts,
         accuracy: session.metrics.accuracy,
         avg_time_per_chord: session.metrics.avgTimePerChord,
         fastest_time: session.metrics.fastestTime,
         slowest_time: session.metrics.slowestTime,
+        effective_chords: session.metrics.effectiveChords || parseFloat((session.metrics.totalChords * (session.metrics.accuracy / 100)).toFixed(2)),
         chord_results: session.chordResults,
       }));
 
@@ -439,6 +454,7 @@ export const syncFromSupabase = async (): Promise<void> => {
               mode: row.mode as 'chordTypes' | 'scales',
               chordTypes: row.chord_types || [],
               scales: row.scales || [],
+              includeInversions: row.include_inversions || false,
             },
             metrics: {
               totalChords: row.total_chords,
@@ -447,6 +463,7 @@ export const syncFromSupabase = async (): Promise<void> => {
               avgTimePerChord: parseFloat(row.avg_time_per_chord?.toString() || '0'),
               fastestTime: parseFloat(row.fastest_time?.toString() || '0'),
               slowestTime: parseFloat(row.slowest_time?.toString() || '0'),
+              effectiveChords: parseFloat(row.effective_chords?.toString() || '0'),
             },
             chordResults: (row.chord_results as unknown[]) || [],
             timestamp: new Date(row.created_at).getTime(),
