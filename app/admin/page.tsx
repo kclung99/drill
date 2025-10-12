@@ -17,7 +17,7 @@ interface DrawingRef {
   body_part: string | null;
   gender: string | null;
   clothing_state: string;
-  attributes: any;
+  attributes: Record<string, unknown>;
   used_count: number;
   used_for_generation: boolean;
   created_at: string;
@@ -126,7 +126,7 @@ export default function AdminImagesPage() {
         })
       );
 
-      setImages(imagesWithBase as any);
+      setImages(imagesWithBase as DrawingImage[]);
       setSelectedIds(new Set()); // Clear selection when filters change
     } catch (error) {
       console.error('Failed to load images:', error);
