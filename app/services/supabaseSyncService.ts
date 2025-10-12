@@ -413,7 +413,8 @@ export const syncFromSupabase = async (): Promise<void> => {
       drawingRows.forEach(row => {
         // Only count if session meets minimum thresholds
         const meetsRefThreshold = row.image_count >= settings.minDrawingRefs;
-        const meetsDurationThreshold = row.duration_seconds === null || row.duration_seconds >= settings.minDrawingDurationSeconds;
+        // Don't count infinite duration (null) sessions
+        const meetsDurationThreshold = row.duration_seconds !== null && row.duration_seconds >= settings.minDrawingDurationSeconds;
 
         if (meetsRefThreshold && meetsDurationThreshold) {
           // Convert UTC timestamp to date in user's timezone

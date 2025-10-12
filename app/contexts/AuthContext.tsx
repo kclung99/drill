@@ -61,30 +61,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for auth changes (login/logout only)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const newUser = session?.user || null;
-      setUser(newUser);
 
       if (newUser) {
-        // Check admin status once on sign in
+        // TEMPORARY: Block new user registration - only allow existing users
+        // Check if user exists in database
+        const { data: userSettings } = await supabase
+          .from('user_settings')
+          .select('user_id')
+          .eq('user_id', newUser.id)
+          .single();
+
+        // If user doesn't exist, sign them out immediately
+        if (!userSettings) {
+          console.log('Unauthorized user attempt:', newUser.email);
+          await supabase.auth.signOut();
+          setUser(null);
+          setIsAdmin(false);
+          return;
+        }
+        // END TEMPORARY
+
+        // User exists, proceed normally
+        setUser(newUser);
         const admin = await checkAdminStatus(newUser.id);
         setIsAdmin(admin);
+
+        // Migrate guest data on first sign-in
+        if (event === 'SIGNED_IN') {
+          // FUTURE: Re-enable migration for new users
+          try {
+            const { migrateGuestData } = await import('@/app/services/supabaseSyncService');
+            const { isMigrated: checkMigrated } = await import('@/app/services/localStorageService');
+
+            if (!checkMigrated()) {
+              await migrateGuestData();
+            }
+          } catch (error) {
+            console.error('Failed to migrate guest data:', error);
+          }
+        }
       } else {
         // Clear cache on sign out
         adminCheckCache = null;
+        setUser(null);
         setIsAdmin(false);
-      }
-
-      // Migrate guest data on first sign-in
-      if (event === 'SIGNED_IN' && newUser) {
-        try {
-          const { migrateGuestData } = await import('@/app/services/supabaseSyncService');
-          const { isMigrated: checkMigrated } = await import('@/app/services/localStorageService');
-
-          if (!checkMigrated()) {
-            await migrateGuestData();
-          }
-        } catch (error) {
-          console.error('Failed to migrate guest data:', error);
-        }
       }
     });
 
