@@ -112,12 +112,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}${window.location.pathname}`,
-      },
-    });
+    // TEMPORARY: Disable sign-in to prevent new user registration
+    alert('Sign-in is currently disabled for new users.');
+    return;
+
+    // FUTURE: Re-enable OAuth sign-in
+    // await supabase.auth.signInWithOAuth({
+    //   provider: 'google',
+    //   options: {
+    //     redirectTo: `${window.location.origin}${window.location.pathname}`,
+    //   },
+    // });
   };
 
   const signOut = async () => {
