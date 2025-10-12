@@ -68,7 +68,7 @@ export interface SyncStatus {
  */
 export const queueHabitSession = async (sessionType: 'music' | 'drawing', date: string): Promise<void> => {
   const { addToSyncQueue } = await import('./localStorageService');
-  addToSyncQueue('habit_sessions', {
+  addToSyncQueue('habit_sessions' as any, {
     session_type: sessionType,
     session_date: date,
   });

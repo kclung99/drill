@@ -95,7 +95,7 @@ export default function DrawingPractice() {
       } else {
         // Move to next image and reset timer
         setCurrentImageIndex(prev => prev + 1);
-        setTimeRemaining(duration === 'inf' ? 0 : duration);
+        setTimeRemaining((duration as any) === 'inf' ? 0 : duration);
       }
     }
   }, [timeRemaining, isSessionActive, currentImageIndex, images.length, duration]);
@@ -313,7 +313,7 @@ export default function DrawingPractice() {
               <div className="flex justify-center gap-2">
                 {[30, 60, 90, 120, 'inf'].map(dur => {
                   const isValid = userSettings
-                    ? (dur !== 'inf' && dur >= userSettings.minDrawingDurationSeconds)
+                    ? (dur !== 'inf' && (dur as number) >= userSettings.minDrawingDurationSeconds)
                     : true;
                   return (
                     <button
@@ -354,7 +354,7 @@ export default function DrawingPractice() {
               <img
                 src={
                   imageSource === 'references'
-                    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${currentImage.filename}`
+                    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${(currentImage as any).filename}`
                     : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/drawing-images/${currentImage.storage_path}`
                 }
                 alt="Drawing reference"

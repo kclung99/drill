@@ -48,14 +48,14 @@ export async function POST(request: NextRequest) {
     console.log('🔑 Output methods:', output ? Object.getOwnPropertyNames(output) : 'no methods');
 
     // According to docs, use output.url() to get the URL
-    if (output && typeof output.url === 'function') {
-      const imageUrl = output.url();
+    if (output && typeof (output as any).url === 'function') {
+      const imageUrl = (output as any).url();
       console.log('✅ Found URL via .url():', imageUrl);
       return NextResponse.json({ imageUrl });
     }
 
     // Fallback: check if it's a direct string
-    if (output && typeof output === 'string' && output.startsWith('https://')) {
+    if (output && typeof output === 'string' && (output as string).startsWith('https://')) {
       console.log('✅ Found direct URL string:', output);
       return NextResponse.json({ imageUrl: output });
     }

@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       const candidate = response.candidates[0];
 
       // Check if Gemini blocked the generation
-      if (candidate.finishReason === 'IMAGE_OTHER' || candidate.finishReason === 'SAFETY') {
+      if ((candidate.finishReason as any) === 'IMAGE_OTHER' || (candidate.finishReason as any) === 'SAFETY') {
         console.error('❌ Gemini blocked generation. Finish reason:', candidate.finishReason);
         return NextResponse.json(
           { error: `Gemini blocked image generation: ${candidate.finishReason}` },

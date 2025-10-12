@@ -199,7 +199,7 @@ export const getTimezoneFromOffset = (offset: number): string => {
     '12': 'Pacific/Fiji',
   };
 
-  return offsetMap[offset.toString()] || 'America/Chicago';
+  return (offsetMap as any)[offset.toString()] || 'America/Chicago';
 };
 
 // ============================================================================

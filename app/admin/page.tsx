@@ -17,7 +17,7 @@ interface DrawingRef {
   body_part: string | null;
   gender: string | null;
   clothing_state: string;
-  attributes: Record<string, unknown>;
+  attributes: any;
   used_count: number;
   used_for_generation: boolean;
   created_at: string;
@@ -126,7 +126,7 @@ export default function AdminImagesPage() {
         })
       );
 
-      setImages(imagesWithBase as DrawingImage[]);
+      setImages(imagesWithBase as any);
       setSelectedIds(new Set()); // Clear selection when filters change
     } catch (error) {
       console.error('Failed to load images:', error);
@@ -994,7 +994,7 @@ export default function AdminImagesPage() {
                         <button
                           onClick={() => setViewMode('generated')}
                           className={`px-4 py-2 text-sm border border-gray-400 ${
-                            viewMode === 'generated'
+                            (viewMode as string) === 'generated'
                               ? 'bg-black text-white'
                               : 'text-gray-600 hover:bg-gray-100'
                           }`}
@@ -1004,7 +1004,7 @@ export default function AdminImagesPage() {
                         <button
                           onClick={() => setViewMode('refs')}
                           className={`px-4 py-2 text-sm border border-gray-400 ${
-                            viewMode === 'refs'
+                            (viewMode as string) === 'refs'
                               ? 'bg-black text-white'
                               : 'text-gray-600 hover:bg-gray-100'
                           }`}
