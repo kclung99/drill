@@ -39,7 +39,7 @@ export function NavBar({ currentPage, showMidiStatus = false, midiActive = false
             live
           </Link>
           <Link
-            href="/practice"
+            href="/chord"
             className={currentPage === 'chord' ? 'text-black underline' : 'text-gray-500 hover:text-black'}
           >
             chord

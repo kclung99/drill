@@ -1,39 +1,58 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import {
-  getHabitData,
-  getDayData,
-  generateDatesForHeatmap,
-  HabitData
-} from '../utils/habitTracker';
 import { fetchSettings, UserSettings } from '@/app/services/settingsService';
 import { getUserTimezone, getTodayInUserTimezone } from '@/app/utils/timezoneHelper';
+import {
+  calculateHeatmap,
+  getHeatmapForDate,
+  getTodayHeatmap,
+  generateHeatmapDates,
+  DayHeatmapData
+} from '@/app/services/heatmapService';
 
 type FilterMode = 'combined' | 'music' | 'drawing';
 
 export default function HabitTracker() {
-  const [habitData, setHabitData] = useState<HabitData>({
-    settings: { musicDailyTarget: 2, drawingDailyTarget: 2 },
-    days: []
-  });
+  const [heatmapData, setHeatmapData] = useState<DayHeatmapData[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+  const [todayData, setTodayData] = useState<DayHeatmapData | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>('combined');
   const [isClient, setIsClient] = useState(false);
 
+  // Load data function
+  const loadData = async () => {
+    const settings = await fetchSettings();
+    setUserSettings(settings);
+
+    // Calculate heatmap from sessions
+    const heatmap = await calculateHeatmap({
+      musicDailyTarget: settings.musicDailyTarget,
+      drawingDailyTarget: settings.drawingDailyTarget,
+    });
+    setHeatmapData(heatmap);
+
+    // Get today's data
+    const today = await getTodayHeatmap({
+      musicDailyTarget: settings.musicDailyTarget,
+      drawingDailyTarget: settings.drawingDailyTarget,
+    });
+    setTodayData(today);
+  };
+
   useEffect(() => {
     setIsClient(true);
-    const loadData = async () => {
-      const data = getHabitData();
-      setHabitData(data);
-
-      const settings = await fetchSettings();
-      setUserSettings(settings);
-    };
     loadData();
+
+    // Reload data after initial sync completes (wait 2s for Supabase pull)
+    const reloadTimeout = setTimeout(() => {
+      loadData();
+    }, 2000);
+
+    return () => clearTimeout(reloadTimeout);
   }, []);
 
-  const getIntensityClass = (dayData: { date: string; musicSessions: number; drawingSessions: number }) => {
+  const getIntensityClass = (dayData: DayHeatmapData) => {
     const musicTarget = userSettings?.musicDailyTarget || 2;
     const drawingTarget = userSettings?.drawingDailyTarget || 2;
     const musicComplete = dayData.musicSessions >= musicTarget;
@@ -53,10 +72,15 @@ export default function HabitTracker() {
     return 'border border-gray-300'; // None
   };
 
+  const getDayDataByDate = (date: string): DayHeatmapData => {
+    const found = heatmapData.find(d => d.date === date);
+    if (found) return found;
+    return { date, musicSessions: 0, drawingSessions: 0, status: 'none' };
+  };
+
   // Only calculate these on client to avoid hydration mismatch
-  const dates = isClient ? generateDatesForHeatmap() : [];
+  const dates = isClient ? generateHeatmapDates() : [];
   const today = isClient ? getTodayInUserTimezone() : '';
-  const todayData = isClient ? getDayData(today) : { date: '', musicSessions: 0, drawingSessions: 0 };
   const currentYear = isClient ? (() => {
     const timezone = getUserTimezone();
     return parseInt(new Intl.DateTimeFormat('en-CA', {
@@ -114,10 +138,10 @@ export default function HabitTracker() {
         {/* Today's Progress */}
         <div className="flex gap-4 text-sm text-gray-500">
           <div>
-            music: {todayData.musicSessions}/{userSettings?.musicDailyTarget || 2}
+            music: {todayData?.musicSessions || 0}/{userSettings?.musicDailyTarget || 2}
           </div>
           <div>
-            drawing: {todayData.drawingSessions}/{userSettings?.drawingDailyTarget || 2}
+            drawing: {todayData?.drawingSessions || 0}/{userSettings?.drawingDailyTarget || 2}
           </div>
         </div>
       </div>
@@ -135,7 +159,7 @@ export default function HabitTracker() {
             {weeks.map((week, weekIndex) => (
               <div key={weekIndex} className="flex flex-col gap-1">
                 {week.map((date) => {
-                  const dayData = getDayData(date);
+                  const dayData = getDayDataByDate(date);
                   const isToday = date === today;
                   const currentYearDate = new Date(date).getFullYear() === currentYear;
 

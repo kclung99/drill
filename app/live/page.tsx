@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useMidi } from '../hooks/useMidi';
 import Piano from '../components/Piano';
-import { detectChord } from '../utils/chordDetection';
+import { detectChord } from '@/app/utils/chord';
 import { Note } from '@tonaljs/tonal';
 import { NavBar } from '@/components/nav-bar';
 

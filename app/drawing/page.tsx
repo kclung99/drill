@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { ImagePoolService } from '../services/imagePoolService';
 import { DrawingImage } from '../lib/supabase';
-import { incrementSession } from '../utils/habitTracker';
 import { NavBar } from '@/components/nav-bar';
 import { UserSettings } from '@/app/services/settingsService';
 
@@ -145,17 +144,8 @@ export default function DrawingPractice() {
     setTimeRemaining(0);
     setIsPaused(false);
 
-    // Check if session meets minimum thresholds before counting it
-    const { fetchSettings } = await import('@/app/services/settingsService');
-    const settings = await fetchSettings();
-
-    const meetsRefThreshold = imageCount >= settings.minDrawingRefs;
-    const meetsDurationThreshold = duration === 'inf' || duration >= settings.minDrawingDurationSeconds;
-
-    if (meetsRefThreshold && meetsDurationThreshold) {
-      // Only increment heatmap if session is valid
-      incrementSession('drawing');
-    }
+    // Note: Heatmap is now automatically derived from saved sessions
+    // Validation happens in heatmapService when calculating
   };
 
   // Save session data when session completes
@@ -165,20 +155,15 @@ export default function DrawingPractice() {
         ? Math.floor((Date.now() - sessionStartTime) / 1000)
         : null;
 
-      // Save to localStorage and queue for Supabase sync
-      import('@/app/services/localStorageService').then(({ saveDrawingSession }) => {
-        const session = saveDrawingSession({
-          config: sessionConfig,
-          results: {
+      // Save session (works for both guest and logged users)
+      import('@/app/services/sessionSyncService').then(({ saveDrawingSession }) => {
+        saveDrawingSession(
+          sessionConfig,
+          {
             imagesCompleted: currentImageIndex + 1, // +1 because index is 0-based
             totalTimeSeconds,
-          },
-        });
-
-        // Queue for Supabase sync
-        import('@/app/services/supabaseSyncService').then(({ queueDrawingSession }) => {
-          queueDrawingSession(session);
-        });
+          }
+        );
       });
     }
   }, [isSessionComplete, sessionConfig, sessionStartTime, currentImageIndex, duration]);

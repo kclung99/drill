@@ -113,6 +113,38 @@ export class AudioService {
   }
 }
 
+/**
+ * Play a chord using the audio service
+ * @param chordName - Chord name (e.g., "C", "Am/E")
+ */
+export const playChord = async (chordName: string): Promise<void> => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const { getChordMidiNotes } = await import('../utils/chord/conversion');
+    const audioService = getAudioService();
+
+    // Get MIDI notes for the chord
+    const midiNotes = getChordMidiNotes(chordName);
+
+    if (midiNotes.length === 0) return;
+
+    // Play all notes simultaneously
+    for (const midiNote of midiNotes) {
+      await audioService.playNote(midiNote, 80);
+    }
+
+    // Stop notes after a short duration
+    setTimeout(async () => {
+      for (const midiNote of midiNotes) {
+        await audioService.stopNote(midiNote);
+      }
+    }, 1500); // Play for 1.5 seconds
+  } catch (error) {
+    console.error('Failed to play chord:', error);
+  }
+};
+
 // Singleton instance
 let audioServiceInstance: AudioService | null = null;
 

@@ -76,11 +76,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Migrate guest data on first sign-in
       if (event === 'SIGNED_IN' && newUser) {
         try {
-          const { migrateGuestData } = await import('@/app/services/supabaseSyncService');
-          const { isMigrated: checkMigrated } = await import('@/app/services/localStorageService');
+          const { migrateGuestSessions } = await import('@/app/services/sessionSyncService');
+          const migrated = localStorage.getItem('drill-migrated');
 
-          if (!checkMigrated()) {
-            await migrateGuestData();
+          if (migrated !== 'true') {
+            await migrateGuestSessions();
           }
         } catch (error) {
           console.error('Failed to migrate guest data:', error);
