@@ -308,6 +308,64 @@ function queueDrawingSession(session: DrawingSession): void {
 // Push Functions (Internal)
 // ============================================================================
 
+/**
+ * Update local session IDs to match Supabase IDs
+ * This prevents duplicate sessions when pulling from other devices
+ */
+function updateLocalSessionIds(
+  mappings: { localId: string; supabaseId: string; type: 'chord' | 'drawing' }[]
+): void {
+  if (mappings.length === 0) return;
+
+  // Update chord sessions
+  const chordMappings = mappings.filter(m => m.type === 'chord');
+  if (chordMappings.length > 0) {
+    const sessions = getChordSessions();
+    let updated = false;
+
+    sessions.forEach(session => {
+      const mapping = chordMappings.find(m => m.localId === session.id);
+      if (mapping) {
+        session.id = mapping.supabaseId;
+        updated = true;
+      }
+    });
+
+    if (updated) {
+      try {
+        localStorage.setItem('drill-chord-sessions', JSON.stringify(sessions));
+      } catch (error) {
+        console.error('Error updating chord session IDs:', error);
+      }
+    }
+  }
+
+  // Update drawing sessions
+  const drawingMappings = mappings.filter(m => m.type === 'drawing');
+  if (drawingMappings.length > 0) {
+    const sessions = getDrawingSessions();
+    let updated = false;
+
+    sessions.forEach(session => {
+      const mapping = drawingMappings.find(m => m.localId === session.id);
+      if (mapping) {
+        session.id = mapping.supabaseId;
+        updated = true;
+      }
+    });
+
+    if (updated) {
+      try {
+        localStorage.setItem('drill-drawing-sessions', JSON.stringify(sessions));
+      } catch (error) {
+        console.error('Error updating drawing session IDs:', error);
+      }
+    }
+  }
+
+  console.log(`Updated ${mappings.length} session IDs to match Supabase`);
+}
+
 async function pushQueuedSessions(userId: string): Promise<void> {
   const queue = getSyncQueue();
 
@@ -316,6 +374,9 @@ async function pushQueuedSessions(userId: string): Promise<void> {
   const chordItems = queue.filter(item => item.type === 'chord');
   const drawingItems = queue.filter(item => item.type === 'drawing');
 
+  // Track local-to-supabase ID mapping
+  const idMappings: { localId: string; supabaseId: string; type: 'chord' | 'drawing' }[] = [];
+
   // Push chord sessions
   if (chordItems.length > 0) {
     const rows = chordItems.map(item => ({
@@ -323,13 +384,25 @@ async function pushQueuedSessions(userId: string): Promise<void> {
       user_id: userId,
     }));
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('chord_practice_sessions')
-      .insert(rows);
+      .insert(rows)
+      .select('id');
 
     if (error) {
       console.error('Error pushing chord sessions:', error);
       throw error;
+    }
+
+    // Map local IDs to Supabase IDs
+    if (data) {
+      chordItems.forEach((item, index) => {
+        idMappings.push({
+          localId: item.id,
+          supabaseId: data[index].id,
+          type: 'chord',
+        });
+      });
     }
   }
 
@@ -340,15 +413,30 @@ async function pushQueuedSessions(userId: string): Promise<void> {
       user_id: userId,
     }));
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('drawing_practice_sessions')
-      .insert(rows);
+      .insert(rows)
+      .select('id');
 
     if (error) {
       console.error('Error pushing drawing sessions:', error);
       throw error;
     }
+
+    // Map local IDs to Supabase IDs
+    if (data) {
+      drawingItems.forEach((item, index) => {
+        idMappings.push({
+          localId: item.id,
+          supabaseId: data[index].id,
+          type: 'drawing',
+        });
+      });
+    }
   }
+
+  // Update localStorage session IDs to match Supabase
+  updateLocalSessionIds(idMappings);
 
   // Clear queue after successful push
   clearQueue();
@@ -381,7 +469,7 @@ async function pullNewSessions(userId: string): Promise<void> {
 
   if (chordRows && chordRows.length > 0) {
     const sessions: ChordSession[] = chordRows.map(row => ({
-      id: `supabase-chord-${row.id}`,
+      id: row.id, // Use Supabase UUID directly
       config: {
         duration: row.duration_minutes,
         mode: row.mode as 'chordTypes' | 'scales',
@@ -422,7 +510,7 @@ async function pullNewSessions(userId: string): Promise<void> {
 
   if (drawingRows && drawingRows.length > 0) {
     const sessions: DrawingSession[] = drawingRows.map(row => ({
-      id: `supabase-drawing-${row.id}`,
+      id: row.id, // Use Supabase UUID directly
       config: {
         duration: row.duration_seconds === null ? 'inf' : row.duration_seconds,
         imageCount: row.image_count,
