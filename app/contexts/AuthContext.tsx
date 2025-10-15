@@ -74,17 +74,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAdmin(false);
       }
 
-      // Migrate guest data on first sign-in
+      // Migrate guest data and perform initial sync on sign-in
       if (event === 'SIGNED_IN' && newUser) {
         try {
-          const { migrateGuestSessions } = await import('@/app/services/sessionSyncService');
-          const migrated = localStorage.getItem('drill-migrated');
+          const { migrateGuestSessions, performSync } = await import('@/app/services/sessionSyncService');
+          const migrationKey = `drill-migrated-${newUser.id}`;
+          const migrated = localStorage.getItem(migrationKey);
 
           if (migrated !== 'true') {
+            // Migrate guest data first
             await migrateGuestSessions();
           }
+
+          // Perform initial sync to pull historical data
+          await performSync();
         } catch (error) {
-          console.error('Failed to migrate guest data:', error);
+          console.error('Failed to migrate guest data or sync:', error);
         }
       }
     });

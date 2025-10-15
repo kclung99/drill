@@ -73,7 +73,7 @@ export interface SyncStatus {
 // ============================================================================
 
 const SYNC_QUEUE_KEY = 'drill-sync-queue';
-const LAST_SYNC_KEY = 'drill-last-sync';
+const LAST_SYNC_KEY_PREFIX = 'drill-last-sync';
 
 // ============================================================================
 // High-Level API (Used by Components)
@@ -136,16 +136,23 @@ export const performSync = async (): Promise<SyncStatus> => {
   const user = authSession.user;
 
   try {
-    // 1. Push queued items to Supabase
+    // Check if this is the first sync for this user (need to pull historical data)
+    const lastSyncTime = getLastSyncTime(user.id);
+    const isFirstSync = lastSyncTime === null;
+
+    if (isFirstSync) {
+      // First sync: pull all historical data from Supabase
+      console.log('First sync detected - pulling historical data from Supabase');
+      await pullNewSessions(user.id);
+    }
+
+    // Always push queued items to Supabase
     await pushQueuedSessions(user.id);
 
-    // 2. Pull new items from Supabase (commented out to prevent double-counting)
-    // await pullNewSessions(user.id);
-
-    // 3. Update last sync time
+    // Update last sync time with user-specific key
     const now = Date.now();
     if (typeof window !== 'undefined') {
-      localStorage.setItem(LAST_SYNC_KEY, now.toString());
+      localStorage.setItem(`${LAST_SYNC_KEY_PREFIX}-${user.id}`, now.toString());
     }
 
     return {
@@ -209,11 +216,19 @@ function clearQueue(): void {
   localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify([]));
 }
 
-function getLastSyncTime(): number | null {
+function getLastSyncTime(userId?: string): number | null {
   if (typeof window === 'undefined') return null;
 
-  const stored = localStorage.getItem(LAST_SYNC_KEY);
-  return stored ? parseInt(stored, 10) : null;
+  // Try user-specific key first, fall back to legacy key
+  if (userId) {
+    const userKey = `${LAST_SYNC_KEY_PREFIX}-${userId}`;
+    const stored = localStorage.getItem(userKey);
+    if (stored) return parseInt(stored, 10);
+  }
+
+  // Legacy fallback
+  const legacyStored = localStorage.getItem(LAST_SYNC_KEY_PREFIX);
+  return legacyStored ? parseInt(legacyStored, 10) : null;
 }
 
 function queueChordSession(session: ChordSession): void {
@@ -318,7 +333,7 @@ async function pushQueuedSessions(userId: string): Promise<void> {
 // ============================================================================
 
 async function pullNewSessions(userId: string): Promise<void> {
-  const lastSyncTime = getLastSyncTime();
+  const lastSyncTime = getLastSyncTime(userId);
   const sinceTimestamp = lastSyncTime
     ? new Date(lastSyncTime).toISOString()
     : new Date(0).toISOString(); // Pull all if first sync
