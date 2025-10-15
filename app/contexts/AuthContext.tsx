@@ -145,6 +145,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       Object.keys(localStorage)
         .filter(key => key.startsWith('drill-'))
         .forEach(key => localStorage.removeItem(key));
+
+      // Redirect to home and force refresh
+      window.location.href = '/';
     }
   };
 
