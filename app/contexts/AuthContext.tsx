@@ -49,7 +49,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Check session once on mount
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      const user = session?.user || null;
       setUser(user);
       if (user) {
         const admin = await checkAdminStatus(user.id);

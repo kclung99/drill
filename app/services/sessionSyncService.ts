@@ -91,8 +91,8 @@ export const saveChordSession = async (
   const session = saveChordSessionLocal(config, metrics, results);
 
   // 2. Queue for Supabase sync (logged users only)
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
+  const { data: { session: authSession } } = await supabase.auth.getSession();
+  if (authSession?.user) {
     queueChordSession(session);
   }
 
@@ -110,8 +110,8 @@ export const saveDrawingSession = async (
   const session = saveDrawingSessionLocal(config, results);
 
   // 2. Queue for Supabase sync (logged users only)
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
+  const { data: { session: authSession } } = await supabase.auth.getSession();
+  if (authSession?.user) {
     queueDrawingSession(session);
   }
 
@@ -123,9 +123,9 @@ export const saveDrawingSession = async (
  * Called by background sync hook
  */
 export const performSync = async (): Promise<SyncStatus> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session: authSession } } = await supabase.auth.getSession();
 
-  if (!user) {
+  if (!authSession?.user) {
     return {
       pending: 0,
       lastSyncTime: null,
@@ -133,12 +133,14 @@ export const performSync = async (): Promise<SyncStatus> => {
     };
   }
 
+  const user = authSession.user;
+
   try {
     // 1. Push queued items to Supabase
     await pushQueuedSessions(user.id);
 
-    // 2. Pull new items from Supabase
-    await pullNewSessions(user.id);
+    // 2. Pull new items from Supabase (commented out to prevent double-counting)
+    // await pullNewSessions(user.id);
 
     // 3. Update last sync time
     const now = Date.now();
@@ -404,16 +406,19 @@ async function pullNewSessions(userId: string): Promise<void> {
 // ============================================================================
 
 export const migrateGuestSessions = async (): Promise<void> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session: authSession } } = await supabase.auth.getSession();
 
-  if (!user) {
+  if (!authSession?.user) {
     throw new Error('User not logged in');
   }
 
-  // Check if already migrated
-  const migrated = localStorage.getItem('drill-migrated');
+  const user = authSession.user;
+
+  // Check if already migrated - use user-specific key to prevent cross-contamination
+  const migrationKey = `drill-migrated-${user.id}`;
+  const migrated = localStorage.getItem(migrationKey);
   if (migrated === 'true') {
-    console.log('Sessions already migrated');
+    console.log('Sessions already migrated for this user');
     return;
   }
 
@@ -421,6 +426,8 @@ export const migrateGuestSessions = async (): Promise<void> => {
     // Get all local sessions
     const chordSessions = getChordSessions();
     const drawingSessions = getDrawingSessions();
+
+    console.log(`Migrating ${chordSessions.length} chord sessions and ${drawingSessions.length} drawing sessions`);
 
     // Push chord sessions
     if (chordSessions.length > 0) {
@@ -469,7 +476,9 @@ export const migrateGuestSessions = async (): Promise<void> => {
       if (error) throw error;
     }
 
-    // Mark as migrated
+    // Mark as migrated with user-specific key
+    localStorage.setItem(migrationKey, 'true');
+    // Also set legacy key for backward compat
     localStorage.setItem('drill-migrated', 'true');
     console.log('Migration completed successfully');
   } catch (error) {
