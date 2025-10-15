@@ -91,7 +91,15 @@ export const saveChordSession = async (
   const session = saveChordSessionLocal(config, metrics, results);
 
   // 2. Queue for Supabase sync (logged users only)
-  const { data: { session: authSession } } = await supabase.auth.getSession();
+  const { data: { session: authSession }, error } = await supabase.auth.getSession();
+
+  // If session validation fails, trigger logout
+  if (error) {
+    console.error('Session validation failed during save, logging out:', error);
+    await supabase.auth.signOut();
+    return session;
+  }
+
   if (authSession?.user) {
     queueChordSession(session);
   }
@@ -110,7 +118,15 @@ export const saveDrawingSession = async (
   const session = saveDrawingSessionLocal(config, results);
 
   // 2. Queue for Supabase sync (logged users only)
-  const { data: { session: authSession } } = await supabase.auth.getSession();
+  const { data: { session: authSession }, error } = await supabase.auth.getSession();
+
+  // If session validation fails, trigger logout
+  if (error) {
+    console.error('Session validation failed during save, logging out:', error);
+    await supabase.auth.signOut();
+    return session;
+  }
+
   if (authSession?.user) {
     queueDrawingSession(session);
   }
@@ -123,7 +139,17 @@ export const saveDrawingSession = async (
  * Called by background sync hook
  */
 export const performSync = async (): Promise<SyncStatus> => {
-  const { data: { session: authSession } } = await supabase.auth.getSession();
+  const { data: { session: authSession }, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    console.error('Session validation failed during sync, logging out:', sessionError);
+    await supabase.auth.signOut();
+    return {
+      pending: 0,
+      lastSyncTime: null,
+      error: 'Session expired',
+    };
+  }
 
   if (!authSession?.user) {
     return {

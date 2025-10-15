@@ -100,9 +100,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error('Failed to clear session data:', error);
         }
       }
+
+      // Auto-logout on token expired or invalid session
+      if (event === 'TOKEN_REFRESHED' && !session) {
+        console.warn('Token refresh failed - session expired, forcing logout');
+        await supabase.auth.signOut();
+      }
+
+      if (event === 'USER_UPDATED' && !session) {
+        console.warn('User session invalid, forcing logout');
+        await supabase.auth.signOut();
+      }
     });
 
-    return () => subscription.unsubscribe();
+    // Periodic session validation (every 5 minutes)
+    const sessionCheckInterval = setInterval(async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error || !session) {
+        console.warn('Session validation failed, forcing logout');
+        await supabase.auth.signOut();
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => {
+      subscription.unsubscribe();
+      clearInterval(sessionCheckInterval);
+    };
   }, []);
 
   const signIn = async () => {
