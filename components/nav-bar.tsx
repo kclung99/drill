@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/app/contexts/AuthContext';
 
 interface NavBarProps {
-  currentPage: 'home' | 'live' | 'chord' | 'reference' | 'settings' | 'admin';
+  currentPage: 'home' | 'live' | 'chord' | 'ear' | 'drawing' | 'settings' | 'admin';
   showMidiStatus?: boolean;
   midiActive?: boolean;
 }
@@ -45,10 +45,16 @@ export function NavBar({ currentPage, showMidiStatus = false, midiActive = false
             chord
           </Link>
           <Link
-            href="/drawing"
-            className={currentPage === 'reference' ? 'text-black underline' : 'text-gray-500 hover:text-black'}
+            href="/ear"
+            className={currentPage === 'ear' ? 'text-black underline' : 'text-gray-500 hover:text-black'}
           >
-            reference
+            ear
+          </Link>
+          <Link
+            href="/drawing"
+            className={currentPage === 'drawing' ? 'text-black underline' : 'text-gray-500 hover:text-black'}
+          >
+            drawing
           </Link>
           <Link
             href="/settings"

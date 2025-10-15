@@ -1,23 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ImagePoolService } from '../services/imagePoolService';
-import { DrawingImage } from '../lib/supabase';
 import { NavBar } from '@/components/nav-bar';
 import { UserSettings } from '@/app/services/settingsService';
+import {
+  useDrawingPracticeSession,
+  DrawingSessionConfig as DrawingSessionConfigType,
+} from '@/app/hooks/useDrawingPracticeSession';
+import DrawingSessionConfig from '@/app/components/DrawingSessionConfig';
+import DrawingSessionActive from '@/app/components/DrawingSessionActive';
+import DrawingSessionResults from '@/app/components/DrawingSessionResults';
 
 export default function DrawingPractice() {
-  const [images, setImages] = useState<DrawingImage[]>([]);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [duration, setDuration] = useState<number | 'inf'>(60);
-  const [isSessionActive, setIsSessionActive] = useState(false);
-  const [isSessionComplete, setIsSessionComplete] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [alwaysGenerateNew, setAlwaysGenerateNew] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
-
   // User settings for validation thresholds
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
 
@@ -28,357 +22,77 @@ export default function DrawingPractice() {
     });
   }, []);
 
-  // New filter options
-  const [category, setCategory] = useState<string>('full-body');
-  const [gender, setGender] = useState<string>('female');
-  const [clothing, setClothing] = useState<string>('minimal');
-  const [imageCount, setImageCount] = useState(10);
-  const [imageSource, setImageSource] = useState<'generated' | 'references'>('references');
+  // Session configuration state
+  const [sessionConfig, setSessionConfig] = useState<DrawingSessionConfigType>({
+    category: 'full-body',
+    gender: 'female',
+    clothing: 'minimal',
+    imageCount: 10,
+    duration: 60,
+    imageSource: 'references',
+    alwaysGenerateNew: false,
+  });
 
-  // Session tracking
-  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
-  const [sessionConfig, setSessionConfig] = useState<{
-    duration: number | 'inf';
-    imageCount: number;
-    category: string;
-    gender: string;
-    clothing: string;
-    alwaysGenerateNew: boolean;
-  } | null>(null);
+  // Session hook manages all session state and logic
+  const session = useDrawingPracticeSession(sessionConfig);
 
-  const imagePoolService = new ImagePoolService();
+  // Session Configuration Screen
+  if (!session.isSessionActive && !session.isSessionComplete) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <NavBar currentPage="drawing" />
+        <DrawingSessionConfig
+          sessionConfig={sessionConfig}
+          userSettings={userSettings}
+          isLoading={session.isLoading}
+          onConfigChange={setSessionConfig}
+          onStart={session.startSession}
+        />
+      </div>
+    );
+  }
 
-  // Wake lock effect
-  useEffect(() => {
-    if (isSessionActive) {
-      // Request wake lock when session starts
-      if ('wakeLock' in navigator) {
-        navigator.wakeLock.request('screen').then((lock) => {
-          setWakeLock(lock);
-        }).catch((err) => {
-          console.log('Wake lock failed:', err);
-        });
-      }
-    } else {
-      // Release wake lock when session ends
-      if (wakeLock) {
-        wakeLock.release();
-        setWakeLock(null);
-      }
-    }
-
-    return () => {
-      if (wakeLock) {
-        wakeLock.release();
-      }
-    };
-  }, [isSessionActive]);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    // Only run timer if duration is not infinite
-    if (isSessionActive && !isPaused && timeRemaining > 0 && duration !== 'inf') {
-      interval = setInterval(() => {
-        setTimeRemaining(prev => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isSessionActive, isPaused, timeRemaining, duration]);
-
-  // Separate effect to handle when timer reaches 0
-  useEffect(() => {
-    if (isSessionActive && timeRemaining === 0 && duration !== 'inf') {
-      // Check if we're at the last image
-      if (currentImageIndex >= images.length - 1) {
-        stopSession();
-      } else {
-        // Move to next image and reset timer
-        setCurrentImageIndex(prev => prev + 1);
-        setTimeRemaining((duration as any) === 'inf' ? 0 : duration);
-      }
-    }
-  }, [timeRemaining, isSessionActive, currentImageIndex, images.length, duration]);
-
-  const startSession = async () => {
-    setIsLoading(true);
-    try {
-      let sessionImages;
-      if (imageSource === 'references') {
-        // Use reference images from drawing_refs table
-        sessionImages = await imagePoolService.getRefsForSession(imageCount, category, gender, clothing);
-      } else if (alwaysGenerateNew) {
-        // Force generation of new images, skip pool
-        sessionImages = await imagePoolService.generateImages(imageCount, category, gender, clothing);
-      } else {
-        // Use normal pool logic with filters
-        sessionImages = await imagePoolService.getImagesForSession(imageCount, category, gender, clothing);
-      }
-
-      // Save session config
-      setSessionConfig({
-        duration,
-        imageCount,
-        category,
-        gender,
-        clothing,
-        alwaysGenerateNew,
-      });
-
-      setImages(sessionImages);
-      setCurrentImageIndex(0);
-      setTimeRemaining(duration === 'inf' ? 0 : duration);
-      setSessionStartTime(Date.now());
-      setIsSessionActive(true);
-      setIsSessionComplete(false);
-    } catch (error) {
-      console.error('Failed to start session:', error);
-      alert('Failed to start session. Please check your configuration.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const stopSession = async () => {
-    setIsSessionActive(false);
-    setIsSessionComplete(true);
-    setTimeRemaining(0);
-    setIsPaused(false);
-
-    // Note: Heatmap is now automatically derived from saved sessions
-    // Validation happens in heatmapService when calculating
-  };
-
-  // Save session data when session completes
-  useEffect(() => {
-    if (isSessionComplete && sessionConfig && sessionStartTime) {
-      const totalTimeSeconds = duration !== 'inf'
-        ? Math.floor((Date.now() - sessionStartTime) / 1000)
-        : null;
-
-      // Save session (works for both guest and logged users)
-      import('@/app/services/sessionSyncService').then(({ saveDrawingSession }) => {
-        saveDrawingSession(
-          sessionConfig,
-          {
-            imagesCompleted: currentImageIndex + 1, // +1 because index is 0-based
-            totalTimeSeconds,
+  // Session Results Screen
+  if (session.isSessionComplete && session.sessionConfig) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <NavBar currentPage="drawing" />
+        <DrawingSessionResults
+          imagesCompleted={session.currentImageIndex + 1}
+          totalTimeSeconds={
+            session.sessionConfig.duration !== 'inf'
+              ? Math.floor(
+                  ((session.sessionConfig.duration as number) * session.currentImageIndex) +
+                    (session.sessionConfig.duration as number - session.timeRemaining)
+                )
+              : null
           }
-        );
-      });
-    }
-  }, [isSessionComplete, sessionConfig, sessionStartTime, currentImageIndex, duration]);
+          onAgain={() => {
+            session.resetSession();
+            session.startSession();
+          }}
+          onBack={session.resetSession}
+        />
+      </div>
+    );
+  }
 
-  const togglePause = () => {
-    setIsPaused(prev => !prev);
-  };
-
-  const goToNext = () => {
-    if (currentImageIndex < images.length - 1) {
-      setCurrentImageIndex(prev => prev + 1);
-    } else {
-      stopSession();
-    }
-  };
-
-  const currentImage = images[currentImageIndex];
-
+  // Active Session Screen
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <NavBar currentPage="reference" />
-
-      {!isSessionActive ? (
-        <div className="flex-1 p-8 flex flex-col items-center justify-center">
-          <div className="max-w-2xl w-full space-y-8">
-
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-sm text-gray-500">parts</div>
-              <div className="flex justify-center gap-2 flex-wrap">
-                {['full-body', 'hands', 'feet', 'portraits'].map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setCategory(cat)}
-                    className={`px-4 py-2 text-sm border border-gray-400 ${
-                      category === cat
-                        ? 'bg-black text-white'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-sm text-gray-500">gender</div>
-              <div className="flex justify-center gap-2">
-                {['male', 'female', 'both'].map(g => (
-                  <button
-                    key={g}
-                    onClick={() => setGender(g)}
-                    className={`px-4 py-2 text-sm border border-gray-400 ${
-                      gender === g
-                        ? 'bg-black text-white'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {category === 'full-body' && (
-              <div className="flex flex-col items-center gap-2">
-                <div className="text-sm text-gray-500">clothing</div>
-                <div className="flex justify-center gap-2 flex-wrap">
-                  {['minimal', 'clothed'].map(c => (
-                    <button
-                      key={c}
-                      onClick={() => setClothing(c)}
-                      className={`px-4 py-2 text-sm border border-gray-400 ${
-                        clothing === c
-                          ? 'bg-black text-white'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* <div className="flex flex-col items-center gap-2">
-              <div className="text-sm text-gray-500">source</div>
-              <div className="flex justify-center gap-2">
-                {['generated', 'references'].map(source => (
-                  <button
-                    key={source}
-                    onClick={() => setImageSource(source as 'generated' | 'references')}
-                    className={`px-4 py-2 text-sm border border-gray-400 ${
-                      imageSource === source
-                        ? 'bg-black text-white'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    {source}
-                  </button>
-                ))}
-              </div>
-            </div> */}
-
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-sm text-gray-500">count</div>
-              <div className="flex justify-center gap-2">
-                {[1, 3, 10, 20, 30].map(count => {
-                  const isValid = userSettings ? count >= userSettings.minDrawingRefs : true;
-                  return (
-                    <button
-                      key={count}
-                      onClick={() => setImageCount(count)}
-                      className={`px-4 py-2 text-sm border border-gray-400 ${
-                        imageCount === count
-                          ? isValid
-                            ? 'bg-black text-white'
-                            : 'bg-gray-300 text-gray-600'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                      title={!isValid ? "Won't count toward heatmap" : undefined}
-                    >
-                      {count}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-sm text-gray-500">duration</div>
-              <div className="flex justify-center gap-2">
-                {[30, 60, 90, 120, 'inf'].map(dur => {
-                  const isValid = userSettings
-                    ? (dur !== 'inf' && (dur as number) >= userSettings.minDrawingDurationSeconds)
-                    : true;
-                  return (
-                    <button
-                      key={dur}
-                      onClick={() => setDuration(dur as number | 'inf')}
-                      className={`px-4 py-2 text-sm border border-gray-400 ${
-                        duration === dur
-                          ? isValid
-                            ? 'bg-black text-white'
-                            : 'bg-gray-300 text-gray-600'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                      title={!isValid ? "Won't count toward heatmap" : undefined}
-                    >
-                      {dur === 'inf' ? 'inf' : `${dur}s`}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex justify-center">
-              <button
-                onClick={startSession}
-                disabled={isLoading}
-                className="text-blue-500 text-sm lowercase hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isLoading ? 'loading...' : 'start'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="fixed inset-0 bg-white flex flex-col z-50 overflow-hidden">
-
-          {currentImage && (
-            <div className="flex-1 min-h-0 flex items-center justify-center">
-              <img
-                src={
-                  imageSource === 'references'
-                    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${(currentImage as any).filename}`
-                    : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/drawing-images/${currentImage.storage_path}`
-                }
-                alt="Drawing reference"
-                className="max-w-full max-h-full object-contain"
-              />
-            </div>
-          )}
-
-          <div className="flex-shrink-0 flex items-center justify-center gap-4 text-sm text-gray-500 py-6">
-            <div>{currentImageIndex + 1}/{images.length}</div>
-            {duration !== 'inf' && (
-              <>
-                <div>{Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}</div>
-                <button
-                  onClick={togglePause}
-                  className="text-blue-500 lowercase hover:underline"
-                >
-                  {isPaused ? 'resume' : 'pause'}
-                </button>
-              </>
-            )}
-            {duration === 'inf' && (
-              <button
-                onClick={goToNext}
-                className="text-blue-500 lowercase hover:underline"
-              >
-                next
-              </button>
-            )}
-            <button
-              onClick={stopSession}
-              className="text-blue-500 lowercase hover:underline"
-            >
-              stop
-            </button>
-          </div>
-
-        </div>
-      )}
+      <NavBar currentPage="drawing" />
+      <DrawingSessionActive
+        currentImage={session.currentImage}
+        currentImageIndex={session.currentImageIndex}
+        totalImages={session.images.length}
+        timeRemaining={session.timeRemaining}
+        duration={sessionConfig.duration}
+        isPaused={session.isPaused}
+        imageSource={sessionConfig.imageSource}
+        onTogglePause={session.togglePause}
+        onNext={session.goToNext}
+        onStop={session.stopSession}
+      />
     </div>
   );
 }

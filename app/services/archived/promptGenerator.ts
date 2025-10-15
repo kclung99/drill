@@ -1,3 +1,13 @@
+/**
+ * Prompt Generator
+ *
+ * Standalone utility for generating random drawing prompts.
+ * Supports full-body, hands, feet, and portrait categories.
+ */
+
+/**
+ * Attribute options for prompts
+ */
 export const BODY_TYPES = [
   'slim',
   'athletic',
@@ -5,14 +15,14 @@ export const BODY_TYPES = [
   'average',
   'petite',
   'tall',
-];
+] as const;
 
 export const RACES = [
   'Asian',
   'White',
   'Latina',
   'Middle Eastern',
-];
+] as const;
 
 export const POSES = [
   // Standing poses - basic
@@ -89,8 +99,8 @@ export const POSES = [
   'thinking pose',
   'surprised pose',
   'confident pose',
-  'relaxed pose'
-];
+  'relaxed pose',
+] as const;
 
 export const HAND_GESTURES = [
   'open palm facing forward',
@@ -108,8 +118,8 @@ export const HAND_GESTURES = [
   'counting two',
   'counting three',
   'ok sign',
-  'stop gesture'
-];
+  'stop gesture',
+] as const;
 
 export const FOOT_ANGLES = [
   'side view',
@@ -120,23 +130,36 @@ export const FOOT_ANGLES = [
   'pointed toes',
   'flexed foot',
   'standing position',
-  'walking position'
-];
+  'walking position',
+] as const;
 
-export const generateDrawingPrompt = (
-  category: string = 'full-body',
-  gender: string = 'female',
-  clothing: string = 'minimal'
-): {
+/**
+ * Prompt generation result
+ */
+export interface PromptResult {
   prompt: string;
   bodyType: string;
   race: string;
   pose: string;
-} => {
+}
+
+/**
+ * Random selection helper
+ */
+function randomItem<T>(array: readonly T[]): T {
+  return array[Math.floor(Math.random() * array.length)];
+}
+
+/**
+ * Generate a random drawing prompt
+ */
+export function generateDrawingPrompt(
+  category: 'full-body' | 'hands' | 'feet' | 'portraits' = 'full-body',
+  gender: 'male' | 'female' | 'both' = 'female',
+  clothing: 'minimal' | 'clothed' = 'minimal'
+): PromptResult {
   // For 'both' gender, randomly pick male or female
-  const actualGender = gender === 'both'
-    ? (Math.random() > 0.5 ? 'male' : 'female')
-    : gender;
+  const actualGender = gender === 'both' ? (Math.random() > 0.5 ? 'male' : 'female') : gender;
 
   let prompt = '';
   let bodyType = '';
@@ -145,29 +168,26 @@ export const generateDrawingPrompt = (
 
   switch (category) {
     case 'full-body':
-      // Full body uses complete attributes: body type, race, gender, clothing, pose
-      bodyType = BODY_TYPES[Math.floor(Math.random() * BODY_TYPES.length)];
-      race = RACES[Math.floor(Math.random() * RACES.length)];
-      pose = POSES[Math.floor(Math.random() * POSES.length)];
-      const clothingItem = actualGender === 'male' ? 'white athletic underwear' : 'white bikini';
+      bodyType = randomItem(BODY_TYPES);
+      race = randomItem(RACES);
+      pose = randomItem(POSES);
+      const clothingItem =
+        actualGender === 'male' ? 'white athletic underwear' : 'white bikini';
       prompt = `A full body image from head to toe of a ${bodyType} ${race} ${actualGender} wearing ${clothingItem} ${pose}. The background should be neutral grey with soft spotlight`;
       break;
 
     case 'hands':
-      // Hands: pick specific gesture - store in pose field
-      pose = HAND_GESTURES[Math.floor(Math.random() * HAND_GESTURES.length)];
+      pose = randomItem(HAND_GESTURES);
       prompt = `A detailed close-up photograph of natural ${actualGender} hands with short nails, no jewelry, showing ${pose}. Neutral grey background with soft lighting`;
       break;
 
     case 'feet':
-      // Feet: pick specific angle - store in pose field
-      pose = FOOT_ANGLES[Math.floor(Math.random() * FOOT_ANGLES.length)];
+      pose = randomItem(FOOT_ANGLES);
       prompt = `A detailed close-up photograph of natural ${actualGender} feet with short nails, no jewelry, ${pose}. Neutral grey background with soft lighting`;
       break;
 
     case 'portraits':
-      // Portraits: focus on face and upper body, include race for diversity
-      race = RACES[Math.floor(Math.random() * RACES.length)];
+      race = randomItem(RACES);
       prompt = `A portrait photograph of a ${race} ${actualGender} showing head and shoulders. Neutral grey background with soft lighting`;
       break;
   }
@@ -176,6 +196,20 @@ export const generateDrawingPrompt = (
     prompt,
     bodyType,
     race,
-    pose
+    pose,
   };
-};
+}
+
+/**
+ * Generate multiple prompts at once
+ */
+export function generateBatchPrompts(
+  count: number,
+  category: 'full-body' | 'hands' | 'feet' | 'portraits' = 'full-body',
+  gender: 'male' | 'female' | 'both' = 'female',
+  clothing: 'minimal' | 'clothed' = 'minimal'
+): PromptResult[] {
+  return Array.from({ length: count }, () =>
+    generateDrawingPrompt(category, gender, clothing)
+  );
+}
