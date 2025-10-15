@@ -74,22 +74,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAdmin(false);
       }
 
-      // Migrate guest data and perform initial sync on sign-in
+      // Clear guest data and perform initial sync on sign-in
       if (event === 'SIGNED_IN' && newUser) {
         try {
-          const { migrateGuestSessions, performSync } = await import('@/app/services/sessionSyncService');
-          const migrationKey = `drill-migrated-${newUser.id}`;
-          const migrated = localStorage.getItem(migrationKey);
+          // Clear any guest session data to keep data flow simple
+          const { clearAllSessions } = await import('@/app/services/sessionDataService');
+          clearAllSessions();
+          console.log('Cleared guest session data on sign-in');
 
-          if (migrated !== 'true') {
-            // Migrate guest data first
-            await migrateGuestSessions();
-          }
-
-          // Perform initial sync to pull historical data
+          // Perform initial sync to pull user's historical data from Supabase
+          const { performSync } = await import('@/app/services/sessionSyncService');
           await performSync();
         } catch (error) {
-          console.error('Failed to migrate guest data or sync:', error);
+          console.error('Failed to clear guest data or sync:', error);
+        }
+      }
+
+      // Clear all session data on sign-out
+      if (event === 'SIGNED_OUT') {
+        try {
+          const { clearAllSessions } = await import('@/app/services/sessionDataService');
+          clearAllSessions();
+          console.log('Cleared all session data on sign-out');
+        } catch (error) {
+          console.error('Failed to clear session data:', error);
         }
       }
     });
@@ -108,7 +116,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    localStorage.clear();
+    // Clear all drill-related localStorage data
+    if (typeof window !== 'undefined') {
+      Object.keys(localStorage)
+        .filter(key => key.startsWith('drill-'))
+        .forEach(key => localStorage.removeItem(key));
+    }
   };
 
   return (
