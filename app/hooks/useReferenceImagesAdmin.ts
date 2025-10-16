@@ -64,7 +64,8 @@ export const useReferenceImagesAdmin = () => {
 
       if (error) {
         console.error('Error loading refs:', error);
-        throw error;
+        setRefs([]);
+        return;
       }
 
       console.log('Loaded refs:', refs?.length, 'images');
@@ -72,6 +73,7 @@ export const useReferenceImagesAdmin = () => {
       setSelectedRefIds(new Set());
     } catch (error) {
       console.error('Failed to load refs:', error);
+      setRefs([]);
     } finally {
       setLoading(false);
     }

@@ -44,7 +44,7 @@ export default function ChordSessionConfig({
         <div className="flex flex-col items-center gap-2">
           <div className="text-sm text-gray-500">duration</div>
           <div className="flex justify-center gap-2">
-            {[0.17, 1, 3, 5, 10, 20].map(duration => {
+            {[1, 3, 5, 10, 20].map(duration => {
               const isValid = isDurationValid(duration);
               return (
                 <button

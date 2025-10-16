@@ -17,11 +17,8 @@ import {
   DrawingSessionResults,
   saveChordSession as saveChordSessionLocal,
   saveDrawingSession as saveDrawingSessionLocal,
-  getChordSessions,
-  getDrawingSessions,
-  mergeChordSessions,
-  mergeDrawingSessions,
 } from './sessionDataService';
+import { pullAndReplaceList } from './syncUtils';
 
 // ============================================================================
 // Types
@@ -57,7 +54,6 @@ interface DrawingPracticeSessionRow {
 }
 
 export interface SyncStatus {
-  lastSyncTime: number | null;
   error: string | null;
 }
 
@@ -116,33 +112,21 @@ export const performSync = async (): Promise<SyncStatus> => {
     const { data: { session: authSession } } = await supabase.auth.getSession();
 
     if (!authSession?.user) {
-      return { lastSyncTime: null, error: 'Not logged in' };
+      return { error: 'Not logged in' };
     }
 
     const userId = authSession.user.id;
 
-    // Always pull all data when called
-    console.log('Pulling all data from Supabase');
+    // Pull all data from Supabase and replace localStorage
     await pullAllSessions(userId);
 
-    // Update last sync time
-    const now = Date.now();
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(`drill-last-sync-${userId}`, now.toString());
-    }
-
-    return { lastSyncTime: now, error: null };
+    return { error: null };
   } catch (error) {
     console.error('Sync failed:', error);
     return {
-      lastSyncTime: null,
       error: error instanceof Error ? error.message : 'Unknown sync error',
     };
   }
-};
-
-export const getSyncStatus = (): SyncStatus => {
-  return { lastSyncTime: getLastSyncTime(), error: null };
 };
 
 // ============================================================================
@@ -219,17 +203,12 @@ async function syncDrawingSessionToSupabase(session: DrawingSession, userId: str
 }
 
 async function pullAllSessions(userId: string): Promise<void> {
-  // Pull all chord sessions
-  const { data: chordRows, error: chordError } = await supabase
-    .from('chord_practice_sessions')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true });
-
-  if (chordError) throw chordError;
-
-  if (chordRows && chordRows.length > 0) {
-    const sessions: ChordSession[] = chordRows.map(row => ({
+  // Pull chord sessions and replace localStorage
+  await pullAndReplaceList<ChordSession>(
+    'chord_practice_sessions',
+    'drill-chord-sessions',
+    userId,
+    (row) => ({
       id: row.id,
       config: {
         duration: row.duration_minutes,
@@ -249,22 +228,15 @@ async function pullAllSessions(userId: string): Promise<void> {
       },
       chordResults: (row.chord_results as ChordSessionResult[]) || [],
       timestamp: new Date(row.created_at).getTime(),
-    }));
+    })
+  );
 
-    mergeChordSessions(sessions);
-  }
-
-  // Pull all drawing sessions
-  const { data: drawingRows, error: drawingError } = await supabase
-    .from('drawing_practice_sessions')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true });
-
-  if (drawingError) throw drawingError;
-
-  if (drawingRows && drawingRows.length > 0) {
-    const sessions: DrawingSession[] = drawingRows.map(row => ({
+  // Pull drawing sessions and replace localStorage
+  await pullAndReplaceList<DrawingSession>(
+    'drawing_practice_sessions',
+    'drill-drawing-sessions',
+    userId,
+    (row) => ({
       id: row.id,
       config: {
         duration: row.duration_seconds === null ? 'inf' : row.duration_seconds,
@@ -279,21 +251,6 @@ async function pullAllSessions(userId: string): Promise<void> {
         totalTimeSeconds: row.total_time_seconds,
       },
       timestamp: new Date(row.created_at).getTime(),
-    }));
-
-    mergeDrawingSessions(sessions);
-  }
-}
-
-function getLastSyncTime(userId?: string): number | null {
-  if (typeof window === 'undefined') return null;
-
-  if (userId) {
-    const stored = localStorage.getItem(`drill-last-sync-${userId}`);
-    if (stored) return parseInt(stored, 10);
-  }
-
-  // Legacy fallback
-  const legacyStored = localStorage.getItem('drill-last-sync');
-  return legacyStored ? parseInt(legacyStored, 10) : null;
+    })
+  );
 }

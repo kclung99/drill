@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '@/app/lib/supabase';
 import { User } from '@supabase/supabase-js';
 
@@ -14,34 +14,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Check admin status ONCE and cache in memory
-let adminCheckCache: { userId: string; isAdmin: boolean } | null = null;
-
-// Track last user ID in localStorage to persist across page refreshes
-// We use ID instead of User object because User is a new object on every auth event
-const LAST_USER_KEY = 'drill-last-user-id';
-
-function getLastUserId(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(LAST_USER_KEY);
-}
-
-function setLastUserId(userId: string | null): void {
-  if (typeof window === 'undefined') return;
-  if (userId) {
-    localStorage.setItem(LAST_USER_KEY, userId);
-  } else {
-    localStorage.removeItem(LAST_USER_KEY);
-  }
-}
-
 async function checkAdminStatus(userId: string): Promise<boolean> {
-  // Return cached result if we already checked this user in this session
-  if (adminCheckCache && adminCheckCache.userId === userId) {
-    return adminCheckCache.isAdmin;
-  }
-
-  // Query database
   try {
     const { data, error } = await supabase
       .from('user_settings')
@@ -49,12 +22,7 @@ async function checkAdminStatus(userId: string): Promise<boolean> {
       .eq('user_id', userId)
       .single();
 
-    const isAdmin = !error && data?.role === 'admin';
-
-    // Cache in memory for this session
-    adminCheckCache = { userId, isAdmin };
-
-    return isAdmin;
+    return !error && data?.role === 'admin';
   } catch (error) {
     console.error('Error checking admin status:', error);
     return false;
@@ -67,62 +35,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Use setTimeout to prevent blocking subsequent Supabase calls
+      setTimeout(async () => {
+        setUser(session?.user ?? null);
 
-    // Just listen to auth state changes - Supabase handles everything
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const lastUserId = getLastUserId();
-      console.log('[Auth] Event:', event, 'lastUserId:', lastUserId, 'newUserId:', session?.user?.id);
-
-      const newUser = session?.user || null;
-      const newUserId = newUser?.id || null;
-      const userChanged = newUserId !== lastUserId;
-
-      // Handle user changes (login, logout, account switch)
-      if (userChanged) {
-        console.log('[Auth] User changed - clearing drill data', { from: lastUserId, to: newUserId });
-        // Clear drill data when switching users
-        if (typeof window !== 'undefined') {
-          Object.keys(localStorage)
-            .filter(key => key.startsWith('drill-') && key !== LAST_USER_KEY)
-            .forEach(key => localStorage.removeItem(key));
+        if (session?.user) {
+          const admin = await checkAdminStatus(session.user.id);
+          setIsAdmin(admin);
+          setLoading(false);
+        } else {
+          setIsAdmin(false);
+          setLoading(false);
         }
-
-        setLastUserId(newUserId);
-        adminCheckCache = null;
-      }
-
-      setUser(newUser);
-      setLoading(false);
-
-      if (newUser) {
-        const admin = await checkAdminStatus(newUser.id);
-        setIsAdmin(admin);
-      } else {
-        setIsAdmin(false);
-      }
+      }, 0);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const signIn = async () => {
+  const signIn = useCallback(async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}${window.location.pathname}`,
       },
     });
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     // Clear all data and sign out
     if (typeof window !== 'undefined') {
-      localStorage.clear(); // Nuclear option - clear everything (including drill-last-user-id)
+      localStorage.clear();
     }
 
     await supabase.auth.signOut();
     window.location.href = '/';
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, isAdmin, loading, signIn, signOut }}>

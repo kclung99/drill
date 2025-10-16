@@ -6,6 +6,7 @@
  */
 
 import { supabase } from '@/app/lib/supabase';
+import { pullAndReplaceSingle } from './syncUtils';
 
 // ============================================================================
 // Types
@@ -106,24 +107,13 @@ export const fetchSettingsFromSupabase = async (): Promise<UserSettings> => {
   }
 
   try {
-    // Try to fetch existing settings
-    const { data, error } = await supabase
-      .from('user_settings')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (error) throw error;
-
-    if (data) {
-      // Settings exist - return them and cache to localStorage
-      const settings = rowToSettings(data);
-      saveSettingsToLocalStorage(settings);
-      return settings;
-    }
-
-    // No settings in DB - return defaults (don't insert yet)
-    return DEFAULT_SETTINGS;
+    return await pullAndReplaceSingle<UserSettings>(
+      'user_settings',
+      STORAGE_KEY,
+      user.id,
+      rowToSettings,
+      DEFAULT_SETTINGS
+    );
   } catch (error) {
     console.error('Error fetching settings:', error);
     // Fallback to localStorage or defaults
