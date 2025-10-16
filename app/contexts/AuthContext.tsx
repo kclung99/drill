@@ -17,9 +17,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Check admin status ONCE and cache in memory
 let adminCheckCache: { userId: string; isAdmin: boolean } | null = null;
 
-// Track last user ID to detect changes (login, logout, account switch)
+// Track last user ID in localStorage to persist across page refreshes
 // We use ID instead of User object because User is a new object on every auth event
-let lastUserId: string | null = null;
+const LAST_USER_KEY = 'drill-last-user-id';
+
+function getLastUserId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(LAST_USER_KEY);
+}
+
+function setLastUserId(userId: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (userId) {
+    localStorage.setItem(LAST_USER_KEY, userId);
+  } else {
+    localStorage.removeItem(LAST_USER_KEY);
+  }
+}
 
 async function checkAdminStatus(userId: string): Promise<boolean> {
   // Return cached result if we already checked this user in this session
@@ -55,21 +69,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
 
     // Just listen to auth state changes - Supabase handles everything
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const lastUserId = getLastUserId();
+      console.log('[Auth] Event:', event, 'lastUserId:', lastUserId, 'newUserId:', session?.user?.id);
+
       const newUser = session?.user || null;
       const newUserId = newUser?.id || null;
       const userChanged = newUserId !== lastUserId;
 
       // Handle user changes (login, logout, account switch)
       if (userChanged) {
+        console.log('[Auth] User changed - clearing drill data', { from: lastUserId, to: newUserId });
         // Clear drill data when switching users
         if (typeof window !== 'undefined') {
           Object.keys(localStorage)
-            .filter(key => key.startsWith('drill-'))
+            .filter(key => key.startsWith('drill-') && key !== LAST_USER_KEY)
             .forEach(key => localStorage.removeItem(key));
         }
 
-        lastUserId = newUserId;
+        setLastUserId(newUserId);
         adminCheckCache = null;
       }
 
@@ -99,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     // Clear all data and sign out
     if (typeof window !== 'undefined') {
-      localStorage.clear(); // Nuclear option - clear everything
+      localStorage.clear(); // Nuclear option - clear everything (including drill-last-user-id)
     }
 
     await supabase.auth.signOut();
