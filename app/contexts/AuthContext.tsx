@@ -48,85 +48,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check session once on mount
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const user = session?.user || null;
-      setUser(user);
-      if (user) {
-        const admin = await checkAdminStatus(user.id);
-        setIsAdmin(admin);
-      }
-      setLoading(false);
-    });
+    // Validate session on init - clear stale data if session invalid
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
 
-    // Listen for auth changes (login/logout only)
+        // If no valid session but localStorage has drill data, clear it
+        if (!session && typeof window !== 'undefined') {
+          const hasDrillData = Object.keys(localStorage).some(key => key.startsWith('drill-'));
+          if (hasDrillData) {
+            console.log('No valid session - clearing stale localStorage data');
+            Object.keys(localStorage)
+              .filter(key => key.startsWith('drill-'))
+              .forEach(key => localStorage.removeItem(key));
+          }
+        }
+      } catch (error) {
+        console.error('Error checking session:', error);
+      }
+    };
+
+    initAuth();
+
+    // Just listen to auth state changes - Supabase handles everything
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const newUser = session?.user || null;
       setUser(newUser);
+      setLoading(false);
 
       if (newUser) {
-        // Check admin status once on sign in
         const admin = await checkAdminStatus(newUser.id);
         setIsAdmin(admin);
       } else {
-        // Clear cache on sign out
         adminCheckCache = null;
         setIsAdmin(false);
       }
 
-      // Clear guest data and perform initial sync on sign-in
-      if (event === 'SIGNED_IN' && newUser) {
-        try {
-          // Clear any guest session data to keep data flow simple
-          const { clearAllSessions } = await import('@/app/services/sessionDataService');
-          clearAllSessions();
-          console.log('Cleared guest session data on sign-in');
-
-          // Perform initial sync to pull user's historical data from Supabase
-          const { performSync } = await import('@/app/services/sessionSyncService');
-          await performSync();
-        } catch (error) {
-          console.error('Failed to clear guest data or sync:', error);
+      // Clear localStorage on sign-in/out
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        if (typeof window !== 'undefined') {
+          Object.keys(localStorage)
+            .filter(key => key.startsWith('drill-'))
+            .forEach(key => localStorage.removeItem(key));
         }
-      }
-
-      // Clear all session data on sign-out
-      if (event === 'SIGNED_OUT') {
-        try {
-          const { clearAllSessions } = await import('@/app/services/sessionDataService');
-          clearAllSessions();
-          console.log('Cleared all session data on sign-out');
-        } catch (error) {
-          console.error('Failed to clear session data:', error);
-        }
-      }
-
-      // Auto-logout on token expired or invalid session
-      if (event === 'TOKEN_REFRESHED' && !session) {
-        console.warn('Token refresh failed - session expired, forcing logout');
-        await supabase.auth.signOut();
-      }
-
-      if (event === 'USER_UPDATED' && !session) {
-        console.warn('User session invalid, forcing logout');
-        await supabase.auth.signOut();
       }
     });
 
-    // Periodic session validation (every 5 minutes)
-    const sessionCheckInterval = setInterval(async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-
-      if (error || !session) {
-        console.warn('Session validation failed, forcing logout');
-        await supabase.auth.signOut();
-      }
-    }, 5 * 60 * 1000); // 5 minutes
-
-    return () => {
-      subscription.unsubscribe();
-      clearInterval(sessionCheckInterval);
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
   const signIn = async () => {
@@ -140,15 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    // Clear all drill-related localStorage data
-    if (typeof window !== 'undefined') {
-      Object.keys(localStorage)
-        .filter(key => key.startsWith('drill-'))
-        .forEach(key => localStorage.removeItem(key));
-
-      // Redirect to home and force refresh
-      window.location.href = '/';
-    }
+    window.location.href = '/';
   };
 
   return (

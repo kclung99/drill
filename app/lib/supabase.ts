@@ -7,6 +7,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
+// Simple client - let Supabase handle everything
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export type DrawingImage = {

@@ -1,8 +1,9 @@
 /**
  * Session Sync Service
  *
- * Handles synchronization between localStorage and Supabase.
- * This layer wraps sessionDataService and adds sync capabilities for logged-in users.
+ * Simple sync between localStorage and Supabase:
+ * - Save: Write to localStorage immediately, sync to Supabase if logged in
+ * - Pull: On first login, pull all historical data from Supabase
  */
 
 import { supabase } from '@/app/lib/supabase';
@@ -55,211 +56,105 @@ interface DrawingPracticeSessionRow {
   total_time_seconds: number | null;
 }
 
-interface SyncQueueItem {
-  id: string;
-  type: 'chord' | 'drawing';
-  data: ChordPracticeSessionRow | DrawingPracticeSessionRow;
-  timestamp: number;
-}
-
 export interface SyncStatus {
-  pending: number;
   lastSyncTime: number | null;
   error: string | null;
 }
 
 // ============================================================================
-// Constants
-// ============================================================================
-
-const SYNC_QUEUE_KEY = 'drill-sync-queue';
-const LAST_SYNC_KEY_PREFIX = 'drill-last-sync';
-
-// ============================================================================
-// High-Level API (Used by Components)
+// Public API
 // ============================================================================
 
 /**
- * Save a chord session - works for both guest and logged users
+ * Save chord session to localStorage and sync to Supabase if logged in
  */
 export const saveChordSession = async (
   config: ChordSessionConfig,
   metrics: ChordSessionMetrics,
   results: ChordSessionResult[]
 ): Promise<ChordSession> => {
-  // 1. Save to localStorage immediately (guest + logged)
   const session = saveChordSessionLocal(config, metrics, results);
 
-  // 2. Queue for Supabase sync (logged users only)
-  const { data: { session: authSession }, error } = await supabase.auth.getSession();
-
-  // If session validation fails, trigger logout
-  if (error) {
-    console.error('Session validation failed during save, logging out:', error);
-    await supabase.auth.signOut();
-    return session;
-  }
-
-  if (authSession?.user) {
-    queueChordSession(session);
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await syncChordSessionToSupabase(session, user.id);
+    }
+  } catch (error) {
+    // Silently fail - session saved to localStorage
   }
 
   return session;
 };
 
 /**
- * Save a drawing session - works for both guest and logged users
+ * Save drawing session to localStorage and sync to Supabase if logged in
  */
 export const saveDrawingSession = async (
   config: DrawingSessionConfig,
   results: DrawingSessionResults
 ): Promise<DrawingSession> => {
-  // 1. Save to localStorage immediately (guest + logged)
   const session = saveDrawingSessionLocal(config, results);
 
-  // 2. Queue for Supabase sync (logged users only)
-  const { data: { session: authSession }, error } = await supabase.auth.getSession();
-
-  // If session validation fails, trigger logout
-  if (error) {
-    console.error('Session validation failed during save, logging out:', error);
-    await supabase.auth.signOut();
-    return session;
-  }
-
-  if (authSession?.user) {
-    queueDrawingSession(session);
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await syncDrawingSessionToSupabase(session, user.id);
+    }
+  } catch (error) {
+    // Silently fail - session saved to localStorage
   }
 
   return session;
 };
 
 /**
- * Perform full sync: push queued items, pull new items
- * Called by background sync hook
+ * Pull historical data from Supabase on first login
  */
 export const performSync = async (): Promise<SyncStatus> => {
-  const { data: { session: authSession }, error: sessionError } = await supabase.auth.getSession();
-
-  if (sessionError) {
-    console.error('Session validation failed during sync, logging out:', sessionError);
-    await supabase.auth.signOut();
-    return {
-      pending: 0,
-      lastSyncTime: null,
-      error: 'Session expired',
-    };
-  }
-
-  if (!authSession?.user) {
-    return {
-      pending: 0,
-      lastSyncTime: null,
-      error: 'Not logged in',
-    };
-  }
-
-  const user = authSession.user;
-
   try {
-    // Check if this is the first sync for this user (need to pull historical data)
-    const lastSyncTime = getLastSyncTime(user.id);
-    const isFirstSync = lastSyncTime === null;
+    const { data: { session: authSession } } = await supabase.auth.getSession();
 
-    if (isFirstSync) {
-      // First sync: pull all historical data from Supabase
-      console.log('First sync detected - pulling historical data from Supabase');
-      await pullNewSessions(user.id);
+    if (!authSession?.user) {
+      return { lastSyncTime: null, error: 'Not logged in' };
     }
 
-    // Always push queued items to Supabase
-    await pushQueuedSessions(user.id);
+    const userId = authSession.user.id;
+    const lastSyncTime = getLastSyncTime(userId);
 
-    // Update last sync time with user-specific key
+    // Only pull on first sync
+    if (lastSyncTime === null) {
+      console.log('First login - pulling historical data from Supabase');
+      await pullAllSessions(userId);
+    }
+
+    // Update last sync time
     const now = Date.now();
     if (typeof window !== 'undefined') {
-      localStorage.setItem(`${LAST_SYNC_KEY_PREFIX}-${user.id}`, now.toString());
+      localStorage.setItem(`drill-last-sync-${userId}`, now.toString());
     }
 
-    return {
-      pending: 0,
-      lastSyncTime: now,
-      error: null,
-    };
+    return { lastSyncTime: now, error: null };
   } catch (error) {
     console.error('Sync failed:', error);
     return {
-      pending: getSyncQueue().length,
-      lastSyncTime: getLastSyncTime(),
+      lastSyncTime: null,
       error: error instanceof Error ? error.message : 'Unknown sync error',
     };
   }
 };
 
-/**
- * Get current sync status
- */
 export const getSyncStatus = (): SyncStatus => {
-  return {
-    pending: getSyncQueue().length,
-    lastSyncTime: getLastSyncTime(),
-    error: null,
-  };
+  return { lastSyncTime: getLastSyncTime(), error: null };
 };
 
 // ============================================================================
-// Queue Management (Internal)
+// Internal Functions
 // ============================================================================
 
-function getSyncQueue(): SyncQueueItem[] {
-  if (typeof window === 'undefined') return [];
-
-  try {
-    const stored = localStorage.getItem(SYNC_QUEUE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (error) {
-    console.error('Error loading sync queue:', error);
-  }
-
-  return [];
-}
-
-function addToQueue(item: SyncQueueItem): void {
-  const queue = getSyncQueue();
-  queue.push(item);
-
-  try {
-    localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
-  } catch (error) {
-    console.error('Error adding to sync queue:', error);
-  }
-}
-
-function clearQueue(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify([]));
-}
-
-function getLastSyncTime(userId?: string): number | null {
-  if (typeof window === 'undefined') return null;
-
-  // Try user-specific key first, fall back to legacy key
-  if (userId) {
-    const userKey = `${LAST_SYNC_KEY_PREFIX}-${userId}`;
-    const stored = localStorage.getItem(userKey);
-    if (stored) return parseInt(stored, 10);
-  }
-
-  // Legacy fallback
-  const legacyStored = localStorage.getItem(LAST_SYNC_KEY_PREFIX);
-  return legacyStored ? parseInt(legacyStored, 10) : null;
-}
-
-function queueChordSession(session: ChordSession): void {
+async function syncChordSessionToSupabase(session: ChordSession, userId: string): Promise<void> {
   const row: ChordPracticeSessionRow = {
-    user_id: '', // Will be filled during push
+    user_id: userId,
     duration_minutes: session.config.duration,
     mode: session.config.mode,
     chord_types: session.config.mode === 'chordTypes' ? session.config.chordTypes : null,
@@ -275,17 +170,28 @@ function queueChordSession(session: ChordSession): void {
     chord_results: session.chordResults,
   };
 
-  addToQueue({
-    id: session.id,
-    type: 'chord',
-    data: row,
-    timestamp: session.timestamp,
-  });
+  const { data, error } = await supabase
+    .from('chord_practice_sessions')
+    .insert([row])
+    .select('id')
+    .single();
+
+  if (error) throw error;
+
+  // Update local ID to match Supabase UUID
+  if (data) {
+    const sessions = getChordSessions();
+    const sessionIndex = sessions.findIndex(s => s.id === session.id);
+    if (sessionIndex >= 0) {
+      sessions[sessionIndex].id = data.id;
+      localStorage.setItem('drill-chord-sessions', JSON.stringify(sessions));
+    }
+  }
 }
 
-function queueDrawingSession(session: DrawingSession): void {
+async function syncDrawingSessionToSupabase(session: DrawingSession, userId: string): Promise<void> {
   const row: DrawingPracticeSessionRow = {
-    user_id: '', // Will be filled during push
+    user_id: userId,
     duration_seconds: session.config.duration === 'inf' ? null : session.config.duration,
     image_count: session.config.imageCount,
     category: session.config.category,
@@ -296,180 +202,38 @@ function queueDrawingSession(session: DrawingSession): void {
     total_time_seconds: session.results.totalTimeSeconds,
   };
 
-  addToQueue({
-    id: session.id,
-    type: 'drawing',
-    data: row,
-    timestamp: session.timestamp,
-  });
-}
+  const { data, error } = await supabase
+    .from('drawing_practice_sessions')
+    .insert([row])
+    .select('id')
+    .single();
 
-// ============================================================================
-// Push Functions (Internal)
-// ============================================================================
+  if (error) throw error;
 
-/**
- * Update local session IDs to match Supabase IDs
- * This prevents duplicate sessions when pulling from other devices
- */
-function updateLocalSessionIds(
-  mappings: { localId: string; supabaseId: string; type: 'chord' | 'drawing' }[]
-): void {
-  if (mappings.length === 0) return;
-
-  // Update chord sessions
-  const chordMappings = mappings.filter(m => m.type === 'chord');
-  if (chordMappings.length > 0) {
-    const sessions = getChordSessions();
-    let updated = false;
-
-    sessions.forEach(session => {
-      const mapping = chordMappings.find(m => m.localId === session.id);
-      if (mapping) {
-        session.id = mapping.supabaseId;
-        updated = true;
-      }
-    });
-
-    if (updated) {
-      try {
-        localStorage.setItem('drill-chord-sessions', JSON.stringify(sessions));
-      } catch (error) {
-        console.error('Error updating chord session IDs:', error);
-      }
-    }
-  }
-
-  // Update drawing sessions
-  const drawingMappings = mappings.filter(m => m.type === 'drawing');
-  if (drawingMappings.length > 0) {
+  // Update local ID to match Supabase UUID
+  if (data) {
     const sessions = getDrawingSessions();
-    let updated = false;
-
-    sessions.forEach(session => {
-      const mapping = drawingMappings.find(m => m.localId === session.id);
-      if (mapping) {
-        session.id = mapping.supabaseId;
-        updated = true;
-      }
-    });
-
-    if (updated) {
-      try {
-        localStorage.setItem('drill-drawing-sessions', JSON.stringify(sessions));
-      } catch (error) {
-        console.error('Error updating drawing session IDs:', error);
-      }
+    const sessionIndex = sessions.findIndex(s => s.id === session.id);
+    if (sessionIndex >= 0) {
+      sessions[sessionIndex].id = data.id;
+      localStorage.setItem('drill-drawing-sessions', JSON.stringify(sessions));
     }
   }
-
-  console.log(`Updated ${mappings.length} session IDs to match Supabase`);
 }
 
-async function pushQueuedSessions(userId: string): Promise<void> {
-  const queue = getSyncQueue();
-
-  if (queue.length === 0) return;
-
-  const chordItems = queue.filter(item => item.type === 'chord');
-  const drawingItems = queue.filter(item => item.type === 'drawing');
-
-  // Track local-to-supabase ID mapping
-  const idMappings: { localId: string; supabaseId: string; type: 'chord' | 'drawing' }[] = [];
-
-  // Push chord sessions
-  if (chordItems.length > 0) {
-    const rows = chordItems.map(item => ({
-      ...(item.data as ChordPracticeSessionRow),
-      user_id: userId,
-    }));
-
-    const { data, error } = await supabase
-      .from('chord_practice_sessions')
-      .insert(rows)
-      .select('id');
-
-    if (error) {
-      console.error('Error pushing chord sessions:', error);
-      throw error;
-    }
-
-    // Map local IDs to Supabase IDs
-    if (data) {
-      chordItems.forEach((item, index) => {
-        idMappings.push({
-          localId: item.id,
-          supabaseId: data[index].id,
-          type: 'chord',
-        });
-      });
-    }
-  }
-
-  // Push drawing sessions
-  if (drawingItems.length > 0) {
-    const rows = drawingItems.map(item => ({
-      ...(item.data as DrawingPracticeSessionRow),
-      user_id: userId,
-    }));
-
-    const { data, error } = await supabase
-      .from('drawing_practice_sessions')
-      .insert(rows)
-      .select('id');
-
-    if (error) {
-      console.error('Error pushing drawing sessions:', error);
-      throw error;
-    }
-
-    // Map local IDs to Supabase IDs
-    if (data) {
-      drawingItems.forEach((item, index) => {
-        idMappings.push({
-          localId: item.id,
-          supabaseId: data[index].id,
-          type: 'drawing',
-        });
-      });
-    }
-  }
-
-  // Update localStorage session IDs to match Supabase
-  updateLocalSessionIds(idMappings);
-
-  // Clear queue after successful push
-  clearQueue();
-}
-
-// ============================================================================
-// Pull Functions (Internal)
-// ============================================================================
-
-async function pullNewSessions(userId: string): Promise<void> {
-  const lastSyncTime = getLastSyncTime(userId);
-  const sinceTimestamp = lastSyncTime
-    ? new Date(lastSyncTime).toISOString()
-    : new Date(0).toISOString(); // Pull all if first sync
-
-  // Pull chord sessions
-  let chordQuery = supabase
+async function pullAllSessions(userId: string): Promise<void> {
+  // Pull all chord sessions
+  const { data: chordRows, error: chordError } = await supabase
     .from('chord_practice_sessions')
     .select('*')
     .eq('user_id', userId)
-    .gt('created_at', sinceTimestamp)
     .order('created_at', { ascending: true });
 
-  const { data: chordRows, error: chordError } = await chordQuery;
-
-  if (chordError) {
-    console.error('Error pulling chord sessions:', chordError);
-    throw chordError;
-  }
+  if (chordError) throw chordError;
 
   if (chordRows && chordRows.length > 0) {
     const sessions: ChordSession[] = chordRows.map(row => ({
-      id: row.id, // Use Supabase UUID directly
+      id: row.id,
       config: {
         duration: row.duration_minutes,
         mode: row.mode as 'chordTypes' | 'scales',
@@ -493,24 +257,18 @@ async function pullNewSessions(userId: string): Promise<void> {
     mergeChordSessions(sessions);
   }
 
-  // Pull drawing sessions
-  let drawingQuery = supabase
+  // Pull all drawing sessions
+  const { data: drawingRows, error: drawingError } = await supabase
     .from('drawing_practice_sessions')
     .select('*')
     .eq('user_id', userId)
-    .gt('created_at', sinceTimestamp)
     .order('created_at', { ascending: true });
 
-  const { data: drawingRows, error: drawingError } = await drawingQuery;
-
-  if (drawingError) {
-    console.error('Error pulling drawing sessions:', drawingError);
-    throw drawingError;
-  }
+  if (drawingError) throw drawingError;
 
   if (drawingRows && drawingRows.length > 0) {
     const sessions: DrawingSession[] = drawingRows.map(row => ({
-      id: row.id, // Use Supabase UUID directly
+      id: row.id,
       config: {
         duration: row.duration_seconds === null ? 'inf' : row.duration_seconds,
         imageCount: row.image_count,
@@ -530,8 +288,15 @@ async function pullNewSessions(userId: string): Promise<void> {
   }
 }
 
-// ============================================================================
-// Note: Guest session migration removed for simplicity
-// ============================================================================
-// Guest sessions are now discarded on sign-in to keep data flow simple.
-// Only logged-in user sessions are tracked in Supabase.
+function getLastSyncTime(userId?: string): number | null {
+  if (typeof window === 'undefined') return null;
+
+  if (userId) {
+    const stored = localStorage.getItem(`drill-last-sync-${userId}`);
+    if (stored) return parseInt(stored, 10);
+  }
+
+  // Legacy fallback
+  const legacyStored = localStorage.getItem('drill-last-sync');
+  return legacyStored ? parseInt(legacyStored, 10) : null;
+}
