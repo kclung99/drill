@@ -85,10 +85,19 @@ export const saveSettingsToLocalStorage = (settings: UserSettings): void => {
 // ============================================================================
 
 /**
- * Fetch user settings from Supabase
- * Returns defaults if settings don't exist (doesn't create them)
+ * Fetch user settings - always uses localStorage first (fast, no auth required)
+ * Only call fetchSettingsFromSupabase() explicitly when you need to sync from server
  */
 export const fetchSettings = async (): Promise<UserSettings> => {
+  // Always use localStorage - fast and works offline
+  return getSettingsFromLocalStorage();
+};
+
+/**
+ * Fetch user settings from Supabase and update localStorage cache
+ * Only call this explicitly when you need fresh data from server (e.g., settings page)
+ */
+export const fetchSettingsFromSupabase = async (): Promise<UserSettings> => {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {

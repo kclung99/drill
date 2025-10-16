@@ -1,13 +1,13 @@
 /**
  * useBackgroundSync Hook
  *
- * Pulls historical data from Supabase on first login.
+ * Pulls historical data from Supabase when user signs in.
  * Sessions sync immediately on save - no periodic background sync.
  */
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { performSync, SyncStatus } from '@/app/services/sessionSyncService';
 
@@ -18,11 +18,20 @@ export const useBackgroundSync = () => {
     error: null,
   });
 
+  // Track which user we've synced for
+  const syncedUserIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (user) {
-      // Pull historical data on first login
-      performSync().then(status => setSyncStatus(status));
+      // Pull data if we haven't synced for this user yet in this session
+      if (syncedUserIdRef.current !== user.id) {
+        console.log('New user session - pulling data from Supabase');
+        syncedUserIdRef.current = user.id;
+        performSync().then(status => setSyncStatus(status));
+      }
     } else {
+      // User logged out - reset
+      syncedUserIdRef.current = null;
       setSyncStatus({ lastSyncTime: null, error: 'Not logged in' });
     }
   }, [user]);

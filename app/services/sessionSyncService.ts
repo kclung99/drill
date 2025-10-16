@@ -109,7 +109,7 @@ export const saveDrawingSession = async (
 };
 
 /**
- * Pull historical data from Supabase on first login
+ * Pull all historical data from Supabase
  */
 export const performSync = async (): Promise<SyncStatus> => {
   try {
@@ -120,13 +120,10 @@ export const performSync = async (): Promise<SyncStatus> => {
     }
 
     const userId = authSession.user.id;
-    const lastSyncTime = getLastSyncTime(userId);
 
-    // Only pull on first sync
-    if (lastSyncTime === null) {
-      console.log('First login - pulling historical data from Supabase');
-      await pullAllSessions(userId);
-    }
+    // Always pull all data when called
+    console.log('Pulling all data from Supabase');
+    await pullAllSessions(userId);
 
     // Update last sync time
     const now = Date.now();
