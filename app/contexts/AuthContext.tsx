@@ -17,6 +17,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Check admin status ONCE and cache in memory
 let adminCheckCache: { userId: string; isAdmin: boolean } | null = null;
 
+// Track last user ID to detect changes (login, logout, account switch)
+// We use ID instead of User object because User is a new object on every auth event
+let lastUserId: string | null = null;
+
 async function checkAdminStatus(userId: string): Promise<boolean> {
   // Return cached result if we already checked this user in this session
   if (adminCheckCache && adminCheckCache.userId === userId) {
@@ -51,44 +55,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
 
     // Just listen to auth state changes - Supabase handles everything
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] onAuthStateChange:', event, {
-        hasSession: !!session,
-        hasUser: !!session?.user,
-        userId: session?.user?.id,
-        expiresAt: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
-      });
-
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const newUser = session?.user || null;
+      const newUserId = newUser?.id || null;
+      const userChanged = newUserId !== lastUserId;
+
+      // Handle user changes (login, logout, account switch)
+      if (userChanged) {
+        // Clear drill data when switching users
+        if (typeof window !== 'undefined') {
+          Object.keys(localStorage)
+            .filter(key => key.startsWith('drill-'))
+            .forEach(key => localStorage.removeItem(key));
+        }
+
+        lastUserId = newUserId;
+        adminCheckCache = null;
+      }
+
       setUser(newUser);
       setLoading(false);
 
       if (newUser) {
         const admin = await checkAdminStatus(newUser.id);
-        console.log('[Auth] Admin check result:', admin);
         setIsAdmin(admin);
       } else {
-        console.log('[Auth] No user - clearing admin status');
-        adminCheckCache = null;
         setIsAdmin(false);
-      }
-
-      // Clear drill data on sign-in/out
-      if (event === 'SIGNED_IN') {
-        // Clear guest data when user signs in
-        if (typeof window !== 'undefined') {
-          Object.keys(localStorage)
-            .filter(key => key.startsWith('drill-'))
-            .forEach(key => localStorage.removeItem(key));
-        }
-      }
-
-      if (event === 'SIGNED_OUT') {
-        if (typeof window !== 'undefined') {
-          Object.keys(localStorage)
-            .filter(key => key.startsWith('drill-'))
-            .forEach(key => localStorage.removeItem(key));
-        }
       }
     });
 

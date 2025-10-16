@@ -23,14 +23,20 @@ export const useBackgroundSync = () => {
 
   useEffect(() => {
     if (user) {
-      // Pull data if we haven't synced for this user yet in this session
+      // Only sync when user ID actually changes (not on every auth event)
       if (syncedUserIdRef.current !== user.id) {
-        console.log('New user session - pulling data from Supabase');
         syncedUserIdRef.current = user.id;
+
+        // Pull session data from Supabase
         performSync().then(status => setSyncStatus(status));
+
+        // Pull settings from Supabase (AuthContext already cleared old data)
+        import('@/app/services/settingsService').then(({ fetchSettingsFromSupabase }) => {
+          fetchSettingsFromSupabase();
+        });
       }
     } else {
-      // User logged out - reset
+      // User logged out - reset sync state
       syncedUserIdRef.current = null;
       setSyncStatus({ lastSyncTime: null, error: 'Not logged in' });
     }
